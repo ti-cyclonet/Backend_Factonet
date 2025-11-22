@@ -26,4 +26,40 @@ export class AuthService {
       throw new HttpException('User not found', HttpStatus.NOT_FOUND);
     }
   }
+
+  // Consumir información de usuarios desde Authoriza
+  async getUsers(token: string, page = 1, limit = 10) {
+    try {
+      const response = await axios.get(`${this.authServiceUrl}/api/users?page=${page}&limit=${limit}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      return response.data;
+    } catch (error) {
+      throw new HttpException('Error fetching users', HttpStatus.BAD_REQUEST);
+    }
+  }
+
+  // Verificar permisos de usuario para Factonet
+  async checkUserAccess(token: string, userId: string) {
+    try {
+      const response = await axios.get(`${this.authServiceUrl}/api/users/${userId}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      return response.data;
+    } catch (error) {
+      throw new HttpException('Access denied', HttpStatus.FORBIDDEN);
+    }
+  }
+
+  // Obtener aplicaciones disponibles
+  async getApplications(token: string) {
+    try {
+      const response = await axios.get(`${this.authServiceUrl}/api/applications`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      return response.data;
+    } catch (error) {
+      throw new HttpException('Error fetching applications', HttpStatus.BAD_REQUEST);
+    }
+  }
 }
