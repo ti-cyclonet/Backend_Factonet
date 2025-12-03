@@ -1,36 +1,66 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
+import { HttpService } from '@nestjs/axios';
+import { ConfigService } from '@nestjs/config';
+import { firstValueFrom } from 'rxjs';
 
 @Injectable()
 export class InvoicesService {
+  private readonly logger = new Logger(InvoicesService.name);
+  private readonly authorizerUrl: string;
+
+  constructor(
+    private readonly httpService: HttpService,
+    private readonly configService: ConfigService,
+  ) {
+    this.authorizerUrl = this.configService.get<string>('AUTH_SERVICE_URL', 'http://localhost:3000');
+  }
+
   async findAll() {
-    return [
-      {
-        id: '1',
-        numero: 'FAC-001 [FACTONET-BACKEND]',
-        cliente: 'Juan Pérez',
-        fechaEmision: '2024-01-15',
-        fechaVencimiento: '2024-02-15',
-        total: 1500.00,
-        estado: 'Pendiente'
-      },
-      {
-        id: '2',
-        numero: 'FAC-002 [FACTONET-BACKEND]',
-        cliente: 'María García',
-        fechaEmision: '2024-01-20',
-        fechaVencimiento: '2024-02-20',
-        total: 2300.50,
-        estado: 'Pagada'
-      },
-      {
-        id: '3',
-        numero: 'FAC-003 [FACTONET-BACKEND]',
-        cliente: 'Carlos López',
-        fechaEmision: '2024-01-25',
-        fechaVencimiento: '2024-01-30',
-        total: 850.75,
-        estado: 'Vencida'
-      }
-    ];
+    try {
+      const response = await firstValueFrom(
+        this.httpService.get(`${this.authorizerUrl}/api/invoices`)
+      );
+      
+      return this.transformInvoices(response.data);
+    } catch (error) {
+      this.logger.error('Error fetching invoices from Authoriza:', error.message);
+      return [];
+    }
+  }
+
+  private transformInvoices(invoices: any[]) {
+    return invoices.map(invoice => ({
+      id: invoice.id,
+      numero: `INV-${String(invoice.id).padStart(6, '0')}`,
+      cliente: invoice.user?.basicData?.strName || invoice.user?.strUserName || 'Cliente desconocido',
+      fechaEmision: invoice.issueDate,
+      fechaVencimiento: invoice.expirationDate,
+      total: Number(invoice.value),
+      estado: this.mapStatus(invoice.status)
+    }));
+  }
+
+  private mapStatus(status: string): 'Pagada' | 'Pendiente' | 'Vencida' {
+    switch (status) {
+      case 'Paid': return 'Pagada';
+      case 'In arrears': return 'Vencida';
+      default: return 'Pendiente';
+    }
+  }
+
+  async sweepInvoices() {
+    try {
+      const url = `${this.authorizerUrl}/api/sweep/invoices`;
+      this.logger.log(`Calling sweep endpoint: ${url}`);
+      
+      const response = await firstValueFrom(
+        this.httpService.post(url)
+      );
+      
+      return response.data;
+    } catch (error) {
+      this.logger.error(`Error executing invoice sweep to ${this.authorizerUrl}:`, error.response?.status, error.message);
+      throw new Error('Failed to execute invoice sweep');
+    }
   }
 }

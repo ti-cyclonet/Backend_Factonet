@@ -7,19 +7,18 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
   constructor() {
     super({
       jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
-      ignoreExpiration: false,
-      secretOrKey: process.env.JWT_SECRET,
-      passReqToCallback: true,
+      ignoreExpiration: true, // Ignorar expiración por ahora
+      secretOrKey: 'wSddeEwq2e', // Mismo secret que Authoriza
     });
   }
 
-  async validate(req: any, payload: any) {
-    // Validación simple del payload JWT
-    if (payload.sub && payload.username) {
+  async validate(payload: any) {
+    // Validación básica del payload
+    if (payload && (payload.sub || payload.id)) {
       return {
-        userId: payload.sub,
-        username: payload.username,
-        roles: payload.roles || []
+        userId: payload.sub || payload.id,
+        username: payload.username || payload.strUserName,
+        email: payload.email
       };
     }
     throw new UnauthorizedException('Token inválido');
