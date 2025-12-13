@@ -42,7 +42,6 @@ async function bootstrap() {
   });
   
   await app.listen(port);
-  logger.log(`Backend Factonet running on port ${port}`);
-  logger.log('Logging habilitado para todos los endpoints');
+  console.log(`Backend FactoNet escuchando en http://localhost:${port}`);
 }
 bootstrap();
