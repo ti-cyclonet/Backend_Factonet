@@ -1,4 +1,4 @@
-import { Controller, Patch, Param, Body } from '@nestjs/common';
+import { Controller, Patch, Param, Body, Delete } from '@nestjs/common';
 import { PeriodsService } from '../periods/periods.service';
 
 @Controller('global-parameters-periods')
@@ -14,5 +14,11 @@ export class GlobalParametersPeriodsController {
       return this.periodsService.updateParameterValue(parameterId, body.value);
     }
     return this.periodsService.updateParameter(parameterId, body);
+  }
+
+  @Delete(':id')
+  removeParameter(@Param('id') parameterId: string) {
+    console.log(`[FACTONET] DELETE /global-parameters-periods/${parameterId}`);
+    return this.periodsService.deleteParameter(parameterId);
   }
 }

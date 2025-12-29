@@ -192,4 +192,31 @@ export class PeriodsService {
       throw new HttpException('Failed to connect to Authoriza service', HttpStatus.SERVICE_UNAVAILABLE);
     }
   }
+
+  async deleteParameter(parameterId: string) {
+    try {
+      console.log(`[FACTONET] Deleting parameter ${parameterId}`);
+      const response = await fetch(`${this.authorizaUrl}/api/global-parameters-periods/${parameterId}`, {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+      
+      console.log(`[FACTONET] Response status: ${response.status}`);
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.log(`[FACTONET] Error response: ${errorText}`);
+        throw new HttpException('Error deleting parameter in Authoriza', HttpStatus.BAD_GATEWAY);
+      }
+
+      const result = await response.json();
+      console.log(`[FACTONET] Delete result:`, result);
+      return result;
+    } catch (error) {
+      console.error(`[FACTONET] Error deleting parameter:`, error);
+      throw new HttpException('Failed to connect to Authoriza service', HttpStatus.SERVICE_UNAVAILABLE);
+    }
+  }
 }
