@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, UseGuards, Param } from '@nestjs/common';
+import { Controller, Get, Post, Body, UseGuards, Param, Delete, Patch } from '@nestjs/common';
 import { PeriodsService } from './periods.service';
 import { CreatePeriodDto } from './dto/create-period.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -30,5 +30,15 @@ export class PeriodsController {
   @Get(':id/parameters')
   getParametersByPeriod(@Param('id') periodId: string) {
     return this.periodsService.getParametersByPeriod(periodId);
+  }
+
+  @Delete(':id')
+  remove(@Param('id') id: string) {
+    return this.periodsService.remove(id);
+  }
+
+  @Patch(':id/activate')
+  activate(@Param('id') id: string) {
+    return this.periodsService.activate(id);
   }
 }

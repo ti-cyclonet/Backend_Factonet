@@ -219,4 +219,58 @@ export class PeriodsService {
       throw new HttpException('Failed to connect to Authoriza service', HttpStatus.SERVICE_UNAVAILABLE);
     }
   }
+
+  async remove(periodId: string) {
+    try {
+      console.log(`[FACTONET] Deleting period ${periodId}`);
+      const response = await fetch(`${this.authorizaUrl}/api/periods/${periodId}`, {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+      
+      console.log(`[FACTONET] Response status: ${response.status}`);
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.log(`[FACTONET] Error response: ${errorText}`);
+        throw new HttpException('Error deleting period in Authoriza', HttpStatus.BAD_GATEWAY);
+      }
+
+      const result = await response.json();
+      console.log(`[FACTONET] Delete result:`, result);
+      return result;
+    } catch (error) {
+      console.error(`[FACTONET] Error deleting period:`, error);
+      throw new HttpException('Failed to connect to Authoriza service', HttpStatus.SERVICE_UNAVAILABLE);
+    }
+  }
+
+  async activate(periodId: string) {
+    try {
+      console.log(`[FACTONET] Activating period ${periodId}`);
+      const response = await fetch(`${this.authorizaUrl}/api/periods/${periodId}/activate`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+      
+      console.log(`[FACTONET] Response status: ${response.status}`);
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.log(`[FACTONET] Error response: ${errorText}`);
+        throw new HttpException('Error activating period in Authoriza', HttpStatus.BAD_GATEWAY);
+      }
+
+      const result = await response.json();
+      console.log(`[FACTONET] Activate result:`, result);
+      return result;
+    } catch (error) {
+      console.error(`[FACTONET] Error activating period:`, error);
+      throw new HttpException('Failed to connect to Authoriza service', HttpStatus.SERVICE_UNAVAILABLE);
+    }
+  }
 }
