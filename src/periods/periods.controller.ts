@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, UseGuards, Param, Delete, Patch } from '@nestjs/common';
+import { Controller, Get, Post, Body, UseGuards, Param, Delete, Patch, Query } from '@nestjs/common';
 import { PeriodsService } from './periods.service';
 import { CreatePeriodDto } from './dto/create-period.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -20,6 +20,16 @@ export class PeriodsController {
   @Get('global-parameters')
   getGlobalParameters() {
     return this.periodsService.getGlobalParameters();
+  }
+
+  @Get('global-parameters/validate-name')
+  validateParameterName(@Query('name') name: string) {
+    return this.periodsService.validateParameterName(name);
+  }
+
+  @Post('global-parameters')
+  createGlobalParameter(@Body() createParameterDto: any) {
+    return this.periodsService.createGlobalParameter(createParameterDto);
   }
 
   @Post(':id/parameters')

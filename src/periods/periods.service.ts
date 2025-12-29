@@ -47,6 +47,54 @@ export class PeriodsService {
     }
   }
 
+  async validateParameterName(name: string) {
+    try {
+      console.log('Validating parameter name:', name);
+      
+      const response = await fetch(`${this.authorizaUrl}/api/global-parameters/validate-name?name=${encodeURIComponent(name)}`);
+      
+      console.log('Response status:', response.status);
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.log('Error response:', errorText);
+        throw new HttpException(`Error validating parameter name: ${errorText}`, HttpStatus.BAD_GATEWAY);
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error('Connection error:', error);
+      throw new HttpException(`Failed to connect to Authoriza service: ${error.message}`, HttpStatus.SERVICE_UNAVAILABLE);
+    }
+  }
+
+  async createGlobalParameter(createParameterDto: any) {
+    try {
+      console.log('Creating global parameter:', createParameterDto);
+      
+      const response = await fetch(`${this.authorizaUrl}/api/global-parameters`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(createParameterDto),
+      });
+      
+      console.log('Response status:', response.status);
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.log('Error response:', errorText);
+        throw new HttpException(`Error creating global parameter: ${errorText}`, HttpStatus.BAD_GATEWAY);
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error('Connection error:', error);
+      throw new HttpException(`Failed to connect to Authoriza service: ${error.message}`, HttpStatus.SERVICE_UNAVAILABLE);
+    }
+  }
+
   async getGlobalParameters() {
     try {
       const response = await fetch(`${this.authorizaUrl}/api/global-parameters`);
