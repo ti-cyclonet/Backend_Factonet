@@ -339,6 +339,26 @@ export class PeriodsService {
     }
   }
 
+  async removeParameterFromPeriod(parameterId: string) {
+    try {
+      const response = await fetch(`${this.authorizaUrl}/api/global-parameters-periods/${parameterId}`, {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new HttpException('Error deleting parameter from period in Authoriza', HttpStatus.BAD_GATEWAY);
+      }
+
+      return await response.json();
+    } catch (error) {
+      throw new HttpException('Failed to connect to Authoriza service', HttpStatus.SERVICE_UNAVAILABLE);
+    }
+  }
+
   async activate(periodId: string) {
     try {
       const response = await fetch(`${this.authorizaUrl}/api/periods/${periodId}/activate`, {
