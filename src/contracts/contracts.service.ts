@@ -43,4 +43,29 @@ export class ContractsService {
       ];
     }
   }
+
+  async uploadContractPDF(contractId: string, pdfBuffer: Buffer, authToken?: string): Promise<string> {
+    try {
+      const base64PDF = pdfBuffer.toString('base64');
+      
+      const response = await fetch(`http://localhost:3000/api/contracts/${contractId}/pdf`, {
+        method: 'POST',
+        headers: {
+          'Authorization': authToken || `Bearer ${process.env.JWT_SECRET}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ pdfBuffer: base64PDF })
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to upload PDF');
+      }
+      
+      const result = await response.json();
+      return result.pdfUrl;
+    } catch (error) {
+      console.error('Error uploading PDF:', error);
+      throw new Error('Failed to upload PDF to server');
+    }
+  }
 }
