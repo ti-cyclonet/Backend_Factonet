@@ -7,6 +7,11 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 export class PeriodsController {
   constructor(private readonly periodsService: PeriodsService) {}
 
+  @Post('subperiods')
+  createSubperiod(@Body() createSubperiodDto: any) {
+    return this.periodsService.createSubperiod(createSubperiodDto);
+  }
+
   @Post()
   create(@Body() createPeriodDto: CreatePeriodDto) {
     return this.periodsService.create(createPeriodDto);
@@ -45,6 +50,11 @@ export class PeriodsController {
   @Delete(':id')
   remove(@Param('id') id: string) {
     return this.periodsService.remove(id);
+  }
+
+  @Patch(':id/deactivate')
+  deactivate(@Param('id') id: string) {
+    return this.periodsService.deactivate(id);
   }
 
   @Patch(':id/activate')
