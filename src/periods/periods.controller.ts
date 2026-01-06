@@ -4,8 +4,14 @@ import { CreatePeriodDto } from './dto/create-period.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 
 @Controller('periods')
+// @UseGuards(JwtAuthGuard) // Temporalmente deshabilitado para pruebas
 export class PeriodsController {
   constructor(private readonly periodsService: PeriodsService) {}
+
+  @Get('test-connection')
+  async testConnection() {
+    return this.periodsService.testConnection();
+  }
 
   @Post('subperiods')
   createSubperiod(@Body() createSubperiodDto: any) {
@@ -52,6 +58,11 @@ export class PeriodsController {
     return this.periodsService.remove(id);
   }
 
+  @Delete(':id/force')
+  forceRemove(@Param('id') id: string) {
+    return this.periodsService.forceRemove(id);
+  }
+
   @Patch(':id/deactivate')
   deactivate(@Param('id') id: string) {
     return this.periodsService.deactivate(id);
@@ -60,5 +71,20 @@ export class PeriodsController {
   @Patch(':id/activate')
   activate(@Param('id') id: string) {
     return this.periodsService.activate(id);
+  }
+
+  @Get('active/current')
+  getActivePeriod() {
+    return this.periodsService.getActivePeriod();
+  }
+
+  @Get('validation/check-active')
+  validateActivePeriod() {
+    return this.periodsService.validateActivePeriod();
+  }
+
+  @Post('validation/validate-expiry')
+  validatePeriodExpiry() {
+    return this.periodsService.validatePeriodExpiry();
   }
 }

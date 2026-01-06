@@ -7,5 +7,6 @@ import { GlobalParametersForInvoicesController } from '../global-parameters-for-
 @Module({
   controllers: [PeriodsController, GlobalParametersPeriodsController, GlobalParametersForInvoicesController],
   providers: [PeriodsService],
+  exports: [PeriodsService],
 })
 export class PeriodsModule {}

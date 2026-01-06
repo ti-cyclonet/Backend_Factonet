@@ -29,15 +29,37 @@ export class InvoicesService {
   }
 
   private transformInvoices(invoices: any[]) {
-    return invoices.map(invoice => ({
-      id: invoice.id,
-      numero: `INV-${String(invoice.id).padStart(6, '0')}`,
-      cliente: invoice.user?.basicData?.strName || invoice.user?.strUserName || 'Cliente desconocido',
-      fechaEmision: invoice.issueDate,
-      fechaVencimiento: invoice.expirationDate,
-      total: Number(invoice.value),
-      estado: this.mapStatus(invoice.status)
-    }));
+    return invoices.map(invoice => {
+      const transformed: any = {
+        id: invoice.id,
+        numero: invoice.code || `INV-${String(invoice.id).padStart(6, '0')}`,
+        cliente: invoice.user?.basicData?.strName || invoice.user?.strUserName || 'Cliente desconocido',
+        fechaEmision: invoice.issueDate,
+        fechaVencimiento: invoice.expirationDate,
+        total: Number(invoice.value),
+        estado: this.mapStatus(invoice.status)
+      };
+
+      // Agregar parámetros globales desde el campo JSON
+      if (invoice.globalParameters) {
+        Object.keys(invoice.globalParameters).forEach(key => {
+          // Los valores en globalParameters ya son los valores calculados (no porcentajes)
+          transformed[key] = Number(invoice.globalParameters[key]);
+        });
+      }
+
+      // Agregar tipos de operación para cálculos
+      if (invoice.operationTypes) {
+        transformed.operationTypes = invoice.operationTypes;
+      }
+
+      // Agregar porcentajes originales para títulos
+      if (invoice.percentages) {
+        transformed.percentages = invoice.percentages;
+      }
+
+      return transformed;
+    });
   }
 
   private mapStatus(status: string): 'Pagada' | 'Pendiente' | 'Vencida' {
@@ -45,6 +67,25 @@ export class InvoicesService {
       case 'Paid': return 'Pagada';
       case 'In arrears': return 'Vencida';
       default: return 'Pendiente';
+    }
+  }
+
+  async checkInvoicesInPeriod(startDate: string, endDate: string) {
+    try {
+      const response = await firstValueFrom(
+        this.httpService.get(`${this.authorizerUrl}/api/invoices/check-period`, {
+          params: {
+            startDate,
+            endDate
+          }
+        })
+      );
+      
+      return response.data;
+    } catch (error) {
+      this.logger.error('Error checking invoices in period from Authoriza:', error.message);
+      // En caso de error, asumir que hay facturas por seguridad
+      return { hasInvoices: true };
     }
   }
 

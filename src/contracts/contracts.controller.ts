@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Param, Body, Headers, Logger } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Param, Body, Headers, Logger, BadRequestException } from '@nestjs/common';
 import { ContractsService } from './contracts.service';
 
 @Controller('contracts')
@@ -16,6 +16,29 @@ export class ContractsController {
       return result;
     } catch (error) {
       this.logger.error(`GET /api/contracts - Error: ${error.message}`, error.stack);
+      throw error;
+    }
+  }
+
+  @Patch(':id/status')
+  async updateStatus(
+    @Param('id') contractId: string,
+    @Body() body: { status: string },
+    @Headers('authorization') authHeader?: string
+  ) {
+    this.logger.log(`PATCH /api/contracts/${contractId}/status - Actualizando estado a ${body.status}`);
+    try {
+      const result = await this.contractsService.updateStatus(contractId, body.status, authHeader);
+      this.logger.log(`PATCH /api/contracts/${contractId}/status - Éxito`);
+      return result;
+    } catch (error) {
+      this.logger.error(`PATCH /api/contracts/${contractId}/status - Error: ${error.message}`, error.stack);
+      
+      // Preservar el status code original
+      if (error.status === 400) {
+        throw new BadRequestException(error.message);
+      }
+      
       throw error;
     }
   }
