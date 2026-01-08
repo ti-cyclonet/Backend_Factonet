@@ -1,4 +1,4 @@
-import { Controller, Get, UseGuards, Request, Query, Param, Logger } from '@nestjs/common';
+import { Controller, Get, UseGuards, Request, Query, Param, Logger, Post, Body } from '@nestjs/common';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { AuthService } from './auth.service';
 
@@ -63,6 +63,21 @@ export class AuthController {
       return result;
     } catch (error) {
       this.logger.error(`GET /api/auth/applications - Error: ${error.message}`);
+      throw error;
+    }
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('change-password')
+  async changePassword(@Request() req, @Body() body: { userId: string, oldPassword: string, newPassword: string }) {
+    this.logger.log(`POST /api/auth/change-password - Usuario: ${body.userId}`);
+    const token = req.headers.authorization?.replace('Bearer ', '');
+    try {
+      const result = await this.authService.changePassword(token, body.userId, body.oldPassword, body.newPassword);
+      this.logger.log(`POST /api/auth/change-password - Éxito`);
+      return result;
+    } catch (error) {
+      this.logger.error(`POST /api/auth/change-password - Error: ${error.message}`);
       throw error;
     }
   }

@@ -62,4 +62,19 @@ export class AuthService {
       throw new HttpException('Error fetching applications', HttpStatus.BAD_REQUEST);
     }
   }
+
+  // Cambiar contraseña
+  async changePassword(token: string, userId: string, oldPassword: string, newPassword: string) {
+    try {
+      const response = await axios.post(`${this.authServiceUrl}/api/users/${userId}/change-password`, {
+        oldPassword,
+        newPassword
+      }, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      return response.data;
+    } catch (error) {
+      throw new HttpException('Error changing password', HttpStatus.BAD_REQUEST);
+    }
+  }
 }
