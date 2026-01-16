@@ -33,17 +33,16 @@ export class InvoicesService {
       const transformed: any = {
         id: invoice.id,
         numero: invoice.code || `INV-${String(invoice.id).padStart(6, '0')}`,
-        cliente: invoice.user?.basicData?.strName || invoice.user?.strUserName || 'Cliente desconocido',
+        cliente: invoice.user?.basicData?.legalEntityData?.businessName || invoice.user?.strUserName || 'N/A',
         fechaEmision: invoice.issueDate,
         fechaVencimiento: invoice.expirationDate,
         total: Number(invoice.value),
-        estado: this.mapStatus(invoice.status)
+        estado: invoice.status
       };
 
       // Agregar parámetros globales desde el campo JSON
       if (invoice.globalParameters) {
         Object.keys(invoice.globalParameters).forEach(key => {
-          // Los valores en globalParameters ya son los valores calculados (no porcentajes)
           transformed[key] = Number(invoice.globalParameters[key]);
         });
       }
@@ -60,14 +59,6 @@ export class InvoicesService {
 
       return transformed;
     });
-  }
-
-  private mapStatus(status: string): 'Pagada' | 'Pendiente' | 'Vencida' {
-    switch (status) {
-      case 'Paid': return 'Pagada';
-      case 'In arrears': return 'Vencida';
-      default: return 'Pendiente';
-    }
   }
 
   async checkInvoicesInPeriod(startDate: string, endDate: string) {
