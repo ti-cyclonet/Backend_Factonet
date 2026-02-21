@@ -46,7 +46,6 @@ export class ContractsService {
 
   async updateStatus(contractId: string, status: string, authToken?: string) {
     try {
-      console.log(`Attempting to update contract ${contractId} to status ${status}`);
       const response = await fetch(`http://localhost:3000/api/contracts/${contractId}/status`, {
         method: 'PATCH',
         headers: {
@@ -56,24 +55,16 @@ export class ContractsService {
         body: JSON.stringify({ status })
       });
       
-      console.log(`Response status: ${response.status}`);
-      
       if (!response.ok) {
         const errorData = await response.json();
-        console.log(`Error response:`, errorData);
-        
-        // Re-lanzar el error original con el mismo status y mensaje
         const error = new Error(errorData.message || 'Failed to update contract status');
         (error as any).status = response.status;
         (error as any).response = { data: errorData };
         throw error;
       }
       
-      const result = await response.json();
-      console.log('Update successful:', result);
-      return result;
+      return await response.json();
     } catch (error) {
-      console.error('Error updating contract status:', error.message);
       throw error;
     }
   }
