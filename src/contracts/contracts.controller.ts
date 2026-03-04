@@ -1,17 +1,21 @@
-import { Controller, Get, Post, Patch, Param, Body, Headers, Logger, BadRequestException } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Param, Body, Headers, Logger, BadRequestException, UseGuards, Request } from '@nestjs/common';
 import { ContractsService } from './contracts.service';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 
 @Controller('contracts')
+@UseGuards(JwtAuthGuard)
 export class ContractsController {
   private readonly logger = new Logger(ContractsController.name);
 
   constructor(private readonly contractsService: ContractsService) {}
 
   @Get()
-  async findAll(@Headers('authorization') authHeader?: string) {
+  async findAll(@Request() req, @Headers('authorization') authHeader?: string) {
     this.logger.log('GET /api/contracts - Iniciando consulta de contratos');
     try {
-      const result = await this.contractsService.findAll(authHeader);
+      const tenantId = req.user?.tenantId;
+      const rol = req.user?.rol;
+      const result = await this.contractsService.findAll(tenantId, rol, authHeader);
       this.logger.log(`GET /api/contracts - Éxito: ${result?.length || 0} contratos encontrados`);
       return result;
     } catch (error) {

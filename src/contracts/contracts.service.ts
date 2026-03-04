@@ -1,46 +1,45 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
+import { HttpService } from '@nestjs/axios';
+import { ConfigService } from '@nestjs/config';
+import { firstValueFrom } from 'rxjs';
 
 @Injectable()
 export class ContractsService {
-  async findAll(authToken?: string) {
+  private readonly logger = new Logger(ContractsService.name);
+  private readonly authorizerUrl: string;
+
+  constructor(
+    private readonly httpService: HttpService,
+    private readonly configService: ConfigService,
+  ) {
+    this.authorizerUrl = this.configService.get<string>('AUTH_SERVICE_URL', 'http://localhost:3000');
+  }
+
+  async findAll(tenantId?: string, rol?: string, authToken?: string) {
     try {
-      const response = await fetch('http://localhost:3000/api/contracts?limit=100&offset=0', {
-        headers: {
-          'Authorization': authToken || `Bearer ${process.env.JWT_SECRET}`,
-          'Content-Type': 'application/json'
-        }
-      });
+      let url = `${this.authorizerUrl}/api/contracts`;
       
-      if (!response.ok) {
-        throw new Error('Failed to fetch contracts');
+      // Si el usuario tiene rol 'adminInvoices', usar el endpoint específico por tenant
+      // Si tiene rol 'adminFactonet', usar el endpoint general
+      if (rol === 'adminInvoices' && tenantId) {
+        url = `${this.authorizerUrl}/api/contracts/tenant/${tenantId}`;
+      } else {
+        url = `${this.authorizerUrl}/api/contracts?limit=100&offset=0`;
       }
       
-      const result = await response.json();
-      return result.data || result;
+      const response = await firstValueFrom(
+        this.httpService.get(url, {
+          headers: {
+            'Authorization': authToken || `Bearer ${process.env.JWT_SECRET}`,
+            'Content-Type': 'application/json'
+          }
+        })
+      );
+      
+      return response.data?.data || response.data || [];
     } catch (error) {
-      // Fallback a datos mock si falla la conexión
-      return [
-        {
-          id: '1',
-          user: 'Juan Pérez [FACTONET-BACKEND]',
-          package: 'Premium',
-          value: 1500.00,
-          payday: 15,
-          startDate: '2024-01-01',
-          endDate: '2024-12-31',
-          status: 'Active'
-        },
-        {
-          id: '2',
-          user: 'María García [FACTONET-BACKEND]',
-          package: 'Basic',
-          value: 800.00,
-          payday: 30,
-          startDate: '2024-02-01',
-          endDate: '2024-11-30',
-          status: 'Pending'
-        }
-      ];
+      this.logger.error('Error fetching contracts from Authoriza:', error.message);
+      return [];
     }
   }
 

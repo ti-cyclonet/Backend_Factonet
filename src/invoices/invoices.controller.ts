@@ -1,4 +1,4 @@
-import { Controller, Get, Post, UseGuards, UseInterceptors, Body, Query, Patch, Param } from '@nestjs/common';
+import { Controller, Get, Post, UseGuards, UseInterceptors, Body, Query, Patch, Param, Request } from '@nestjs/common';
 import { InvoicesService } from './invoices.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { ActivePeriodInterceptor } from '../common/interceptors/active-period.interceptor';
@@ -9,8 +9,19 @@ export class InvoicesController {
   constructor(private readonly invoicesService: InvoicesService) {}
 
   @Get()
-  findAll() {
-    return this.invoicesService.findAll();
+  findAll(@Request() req) {
+    const tenantId = req.user?.tenantId;
+    const rol = req.user?.rol;
+    return this.invoicesService.findAll(tenantId, rol);
+  }
+
+  @Get('profit-report')
+  getProfitReport(
+    @Query('startDate') startDate: string,
+    @Query('endDate') endDate: string,
+    @Query('contractId') contractId?: string
+  ) {
+    return this.invoicesService.getProfitReport(startDate, endDate, contractId);
   }
 
   @Get('check-period')

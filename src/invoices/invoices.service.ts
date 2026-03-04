@@ -15,16 +15,40 @@ export class InvoicesService {
     this.authorizerUrl = this.configService.get<string>('AUTH_SERVICE_URL', 'http://localhost:3000');
   }
 
-  async findAll() {
+  async findAll(tenantId?: string, rol?: string) {
     try {
+      const params: any = {};
+      
+      // Si el usuario tiene rol 'adminInvoices', filtrar por tenantId
+      // Si tiene rol 'adminFactonet', no filtrar (ver todas las facturas)
+      if (rol === 'adminInvoices' && tenantId) {
+        params.tenantId = tenantId;
+      }
+      
       const response = await firstValueFrom(
-        this.httpService.get(`${this.authorizerUrl}/api/invoices`)
+        this.httpService.get(`${this.authorizerUrl}/api/invoices`, { params })
       );
       
       return this.transformInvoices(response.data);
     } catch (error) {
       this.logger.error('Error fetching invoices from Authoriza:', error.message);
       return [];
+    }
+  }
+
+  async getProfitReport(startDate: string, endDate: string, contractId?: string) {
+    try {
+      const params: any = { startDate, endDate };
+      if (contractId) params.contractId = contractId;
+      
+      const response = await firstValueFrom(
+        this.httpService.get(`${this.authorizerUrl}/api/invoices/profit-report`, { params })
+      );
+      
+      return response.data;
+    } catch (error) {
+      this.logger.error('Error fetching profit report from Authoriza:', error.message);
+      return { totalInvoiced: 0, totalProfit: 0, invoiceCount: 0, details: [] };
     }
   }
 
