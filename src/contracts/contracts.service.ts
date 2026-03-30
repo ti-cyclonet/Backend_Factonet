@@ -7,6 +7,7 @@ import { firstValueFrom } from 'rxjs';
 export class ContractsService {
   private readonly logger = new Logger(ContractsService.name);
   private readonly authorizerUrl: string;
+  private readonly EXCLUDED_TENANT_NAME = 'cyclonet';
 
   constructor(
     private readonly httpService: HttpService,
@@ -36,11 +37,17 @@ export class ContractsService {
         })
       );
       
-      return response.data?.data || response.data || [];
+      const contracts = response.data?.data || response.data || [];
+      return contracts.filter((contract: any) => !this.isCyclonetTenant(contract));
     } catch (error) {
       this.logger.error('Error fetching contracts from Authoriza:', error.message);
       return [];
     }
+  }
+
+  private isCyclonetTenant(contract: any): boolean {
+    const businessName = (contract.user?.basicData?.legalEntityData?.businessName || '').toLowerCase();
+    return businessName.includes(this.EXCLUDED_TENANT_NAME);
   }
 
   async updateStatus(contractId: string, status: string, authToken?: string) {

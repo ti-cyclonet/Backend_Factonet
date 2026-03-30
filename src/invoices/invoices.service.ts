@@ -7,6 +7,7 @@ import { firstValueFrom } from 'rxjs';
 export class InvoicesService {
   private readonly logger = new Logger(InvoicesService.name);
   private readonly authorizerUrl: string;
+  private readonly EXCLUDED_TENANT_NAME = 'cyclonet';
 
   constructor(
     private readonly httpService: HttpService,
@@ -53,7 +54,9 @@ export class InvoicesService {
   }
 
   private transformInvoices(invoices: any[]) {
-    return invoices.map(invoice => {
+    return invoices
+      .filter(invoice => !this.isCyclonetTenant(invoice))
+      .map(invoice => {
       const transformed: any = {
         id: invoice.id,
         numero: invoice.code || `INV-${String(invoice.id).padStart(6, '0')}`,
@@ -83,6 +86,12 @@ export class InvoicesService {
 
       return transformed;
     });
+  }
+
+  private isCyclonetTenant(invoice: any): boolean {
+    const businessName = (invoice.user?.basicData?.legalEntityData?.businessName || '').toLowerCase();
+    const userName = (invoice.user?.strUserName || '').toLowerCase();
+    return businessName.includes(this.EXCLUDED_TENANT_NAME) || userName.includes(this.EXCLUDED_TENANT_NAME);
   }
 
   async checkInvoicesInPeriod(startDate: string, endDate: string) {

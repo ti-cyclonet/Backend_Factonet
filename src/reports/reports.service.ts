@@ -8,6 +8,7 @@ import { ReportFiltersDto } from './dto/report-filters.dto';
 export class ReportsService {
   private readonly logger = new Logger(ReportsService.name);
   private readonly authorizerUrl: string;
+  private readonly EXCLUDED_TENANT_NAME = 'cyclonet';
 
   constructor(
     private readonly httpService: HttpService,
@@ -427,11 +428,17 @@ export class ReportsService {
         invoices = invoices.filter(inv => inv.status === filters.status);
       }
 
-      return invoices;
+      return invoices.filter((inv: any) => !this.isCyclonetTenant(inv));
     } catch (error) {
       this.logger.error('Error fetching invoices:', error.message);
       return [];
     }
+  }
+
+  private isCyclonetTenant(record: any): boolean {
+    const businessName = (record.user?.basicData?.legalEntityData?.businessName || '').toLowerCase();
+    const userName = (record.user?.strUserName || '').toLowerCase();
+    return businessName.includes(this.EXCLUDED_TENANT_NAME) || userName.includes(this.EXCLUDED_TENANT_NAME);
   }
 
   private async getContractsData() {
@@ -439,7 +446,7 @@ export class ReportsService {
       const response = await firstValueFrom(
         this.httpService.get(`${this.authorizerUrl}/api/contract`)
       );
-      return response.data;
+      return (response.data || []).filter((c: any) => !this.isCyclonetTenant(c));
     } catch (error) {
       this.logger.error('Error fetching contracts:', error.message);
       return [];
