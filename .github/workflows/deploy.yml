@@ -1,0 +1,24 @@
+name: Deploy FactoNet API to EC2
+
+on:
+  push:
+    branches: [master]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1
+        with:
+          host: 3.95.90.144
+          username: ec2-user
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script: |
+            echo "📦 Pulling latest code..."
+            cd /opt/cyclonet/FactoNet/Backend_Factonet
+            git pull origin master
+
+            echo "🔨 Building and deploying..."
+            cd /opt/cyclonet/deploy
+            bash scripts/deploy.sh factonet
