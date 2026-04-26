@@ -7,7 +7,7 @@ export class PeriodsService {
   private readonly authorizaUrl: string;
 
   constructor(private configService: ConfigService) {
-    this.authorizaUrl = this.configService.get<string>('AUTHORIZA_API_URL') || 'http://localhost:3000';
+    this.authorizaUrl = this.configService.get<string>('AUTH_SERVICE_URL') || 'http://localhost:3000';
   }
 
   async testConnection() {
@@ -201,9 +201,7 @@ export class PeriodsService {
       }
 
       const allPeriods = await response.json();
-      // Filtrar solo periodos globales (sin tenantId o tenantId null)
-      const globalPeriods = allPeriods.filter(period => !period.tenantId);
-      return globalPeriods;
+      return allPeriods;
     } catch (error) {
       throw new HttpException('Failed to connect to Authoriza service', HttpStatus.SERVICE_UNAVAILABLE);
     }
