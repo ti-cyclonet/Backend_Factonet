@@ -57,14 +57,34 @@ export class InvoicesService {
     return invoices
       .filter(invoice => !this.isCyclonetTenant(invoice))
       .map(invoice => {
+      const basicData = invoice.user?.basicData;
+      const legalEntity = basicData?.legalEntityData;
+      const naturalPerson = basicData?.naturalPersonData;
+      const contract = invoice.contract;
+
       const transformed: any = {
         id: invoice.id,
         numero: invoice.code || `INV-${String(invoice.id).padStart(6, '0')}`,
-        cliente: invoice.user?.basicData?.legalEntityData?.businessName || invoice.user?.strUserName || 'N/A',
+        cliente: legalEntity?.businessName || invoice.user?.strUserName || 'N/A',
         fechaEmision: invoice.issueDate,
         fechaVencimiento: invoice.expirationDate,
+        fechaPago: invoice.paymentDate,
         total: Number(invoice.value),
-        estado: invoice.status
+        estado: invoice.status,
+        // Datos del cliente para la factura
+        clienteNit: basicData?.documentNumber || '',
+        clienteTipoPersona: basicData?.strPersonType || '',
+        clienteEmail: invoice.user?.strUserName || '',
+        clienteContacto: legalEntity?.contactName || (naturalPerson ? `${naturalPerson.firstName || ''} ${naturalPerson.firstSurname || ''}`.trim() : ''),
+        clienteTelefono: legalEntity?.contactPhone || '',
+        clienteEmailContacto: legalEntity?.contactEmail || '',
+        // Datos del contrato
+        contratoCode: contract?.code || '',
+        contratoModo: contract?.mode || '',
+        contratoPrefijo: contract?.codePrefix || '',
+        // Periodo de servicio
+        periodoInicio: invoice.periodStart,
+        periodoFin: invoice.periodEnd,
       };
 
       // Agregar parámetros globales desde el campo JSON
