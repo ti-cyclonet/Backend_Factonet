@@ -38,6 +38,11 @@ export class ContractsService {
       );
       
       const contracts = response.data?.data || response.data || [];
+
+      // Solo excluir el tenant interno de Cyclonet si NO es adminFactonet
+      if (rol === 'adminFactonet') {
+        return contracts;
+      }
       return contracts.filter((contract: any) => !this.isCyclonetTenant(contract));
     } catch (error) {
       this.logger.error('Error fetching contracts from Authoriza:', error.message);

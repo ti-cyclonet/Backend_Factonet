@@ -30,6 +30,10 @@ export class InvoicesService {
         this.httpService.get(`${this.authorizerUrl}/api/invoices`, { params })
       );
       
+      // adminFactonet ve todas las facturas sin filtro
+      if (rol === 'adminFactonet') {
+        return this.transformInvoicesRaw(response.data);
+      }
       return this.transformInvoices(response.data);
     } catch (error) {
       this.logger.error('Error fetching invoices from Authoriza:', error.message);
@@ -53,9 +57,16 @@ export class InvoicesService {
     }
   }
 
+  private transformInvoicesRaw(invoices: any[]) {
+    return this.mapInvoices(invoices);
+  }
+
   private transformInvoices(invoices: any[]) {
+    return this.mapInvoices(invoices.filter(invoice => !this.isCyclonetTenant(invoice)));
+  }
+
+  private mapInvoices(invoices: any[]) {
     return invoices
-      .filter(invoice => !this.isCyclonetTenant(invoice))
       .map(invoice => {
       const basicData = invoice.user?.basicData;
       const legalEntity = basicData?.legalEntityData;
