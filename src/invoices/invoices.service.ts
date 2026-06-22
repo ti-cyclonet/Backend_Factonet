@@ -32,8 +32,15 @@ export class InvoicesService {
       );
 
       this.logger.log(`Authoriza returned ${response.data?.length || 0} invoices`);
+
+      let invoices = response.data || [];
+
+      // For adminInvoices (clients): hide Unconfirmed invoices
+      if (rol === 'adminInvoices') {
+        invoices = invoices.filter((inv: any) => inv.status !== 'Unconfirmed');
+      }
       
-      return this.mapInvoices(response.data);
+      return this.mapInvoices(invoices);
     } catch (error) {
       this.logger.error(`Error fetching invoices from Authoriza: ${error.message}`, error.stack);
       return [];
