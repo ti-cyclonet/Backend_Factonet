@@ -7,7 +7,6 @@ import { firstValueFrom } from 'rxjs';
 export class InvoicesService {
   private readonly logger = new Logger(InvoicesService.name);
   private readonly authorizerUrl: string;
-  private readonly EXCLUDED_TENANT_NAME = 'cyclonet';
 
   constructor(
     private readonly httpService: HttpService,
@@ -25,18 +24,18 @@ export class InvoicesService {
       if (rol === 'adminInvoices' && tenantId) {
         params.tenantId = tenantId;
       }
+
+      this.logger.log(`findAll called - rol: ${rol}, tenantId: ${tenantId}, params: ${JSON.stringify(params)}`);
       
       const response = await firstValueFrom(
         this.httpService.get(`${this.authorizerUrl}/api/invoices`, { params })
       );
+
+      this.logger.log(`Authoriza returned ${response.data?.length || 0} invoices`);
       
-      // adminFactonet ve todas las facturas sin filtro
-      if (rol === 'adminFactonet') {
-        return this.transformInvoicesRaw(response.data);
-      }
-      return this.transformInvoices(response.data);
+      return this.mapInvoices(response.data);
     } catch (error) {
-      this.logger.error('Error fetching invoices from Authoriza:', error.message);
+      this.logger.error(`Error fetching invoices from Authoriza: ${error.message}`, error.stack);
       return [];
     }
   }
@@ -55,14 +54,6 @@ export class InvoicesService {
       this.logger.error('Error fetching profit report from Authoriza:', error.message);
       return { totalInvoiced: 0, totalProfit: 0, invoiceCount: 0, details: [] };
     }
-  }
-
-  private transformInvoicesRaw(invoices: any[]) {
-    return this.mapInvoices(invoices);
-  }
-
-  private transformInvoices(invoices: any[]) {
-    return this.mapInvoices(invoices.filter(invoice => !this.isCyclonetTenant(invoice)));
   }
 
   private mapInvoices(invoices: any[]) {
@@ -117,12 +108,6 @@ export class InvoicesService {
 
       return transformed;
     });
-  }
-
-  private isCyclonetTenant(invoice: any): boolean {
-    const businessName = (invoice.user?.basicData?.legalEntityData?.businessName || '').toLowerCase();
-    const userName = (invoice.user?.strUserName || '').toLowerCase();
-    return businessName.includes(this.EXCLUDED_TENANT_NAME) || userName.includes(this.EXCLUDED_TENANT_NAME);
   }
 
   async checkInvoicesInPeriod(startDate: string, endDate: string) {
