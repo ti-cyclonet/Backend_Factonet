@@ -57,24 +57,18 @@ export class ContractsService {
 
   async updateStatus(contractId: string, status: string, authToken?: string) {
     try {
-      const response = await fetch(`http://localhost:3000/api/contracts/${contractId}/status`, {
-        method: 'PATCH',
-        headers: {
-          'Authorization': authToken || `Bearer ${process.env.JWT_SECRET}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ status })
-      });
-      
-      if (!response.ok) {
-        const errorData = await response.json();
-        const error = new Error(errorData.message || 'Failed to update contract status');
-        (error as any).status = response.status;
-        (error as any).response = { data: errorData };
-        throw error;
-      }
-      
-      return await response.json();
+      const response = await firstValueFrom(
+        this.httpService.patch(`${this.authorizerUrl}/api/contracts/${contractId}/status`, 
+          { status },
+          {
+            headers: {
+              'Authorization': authToken || `Bearer ${process.env.JWT_SECRET}`,
+              'Content-Type': 'application/json'
+            }
+          }
+        )
+      );
+      return response.data;
     } catch (error) {
       throw error;
     }
@@ -84,23 +78,21 @@ export class ContractsService {
     try {
       const base64PDF = pdfBuffer.toString('base64');
       
-      const response = await fetch(`http://localhost:3000/api/contracts/${contractId}/pdf`, {
-        method: 'POST',
-        headers: {
-          'Authorization': authToken || `Bearer ${process.env.JWT_SECRET}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ pdfBuffer: base64PDF })
-      });
+      const response = await firstValueFrom(
+        this.httpService.post(`${this.authorizerUrl}/api/contracts/${contractId}/pdf`,
+          { pdfBuffer: base64PDF },
+          {
+            headers: {
+              'Authorization': authToken || `Bearer ${process.env.JWT_SECRET}`,
+              'Content-Type': 'application/json'
+            }
+          }
+        )
+      );
       
-      if (!response.ok) {
-        throw new Error('Failed to upload PDF');
-      }
-      
-      const result = await response.json();
-      return result.pdfUrl;
+      return response.data.pdfUrl;
     } catch (error) {
-      console.error('Error uploading PDF:', error);
+      this.logger.error('Error uploading PDF:', error.message);
       throw new Error('Failed to upload PDF to server');
     }
   }
