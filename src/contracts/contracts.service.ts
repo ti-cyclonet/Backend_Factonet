@@ -37,10 +37,11 @@ export class ContractsService {
         })
       );
       
-      const contracts = response.data?.data || response.data || [];
+      const rawData = response.data?.data || response.data || [];
+      const contracts = Array.isArray(rawData) ? rawData : [rawData];
 
-      // Solo excluir el tenant interno de Cyclonet si NO es adminFactonet
-      if (rol === 'adminFactonet') {
+      // No filtrar para adminFactonet ni adminInvoices (son sus propios datos)
+      if (rol === 'adminFactonet' || rol === 'adminInvoices') {
         return contracts;
       }
       return contracts.filter((contract: any) => !this.isCyclonetTenant(contract));
@@ -70,7 +71,13 @@ export class ContractsService {
       );
       return response.data;
     } catch (error) {
-      throw error;
+      // Propagate the original error message from Authoriza
+      const message = error.response?.data?.message || error.message || 'Error updating contract status';
+      const statusCode = error.response?.status || 500;
+      const err = new Error(message);
+      (err as any).status = statusCode;
+      (err as any).response = { data: { message } };
+      throw err;
     }
   }
 
@@ -94,6 +101,54 @@ export class ContractsService {
     } catch (error) {
       this.logger.error('Error uploading PDF:', error.message);
       throw new Error('Failed to upload PDF to server');
+    }
+  }
+
+  async signContract(contractId: string, authToken?: string): Promise<any> {
+    try {
+      const response = await firstValueFrom(
+        this.httpService.patch(`${this.authorizerUrl}/api/contracts/${contractId}/sign`,
+          {},
+          {
+            headers: {
+              'Authorization': authToken || `Bearer ${process.env.JWT_SECRET}`,
+              'Content-Type': 'application/json'
+            }
+          }
+        )
+      );
+      return response.data;
+    } catch (error) {
+      this.logger.error('Error signing contract:', error.message);
+      const message = error.response?.data?.message || error.message || 'Error signing contract';
+      const err = new Error(message);
+      (err as any).status = error.response?.status || 500;
+      (err as any).response = { data: { message } };
+      throw err;
+    }
+  }
+
+  async issueContract(contractId: string, authToken?: string): Promise<any> {
+    try {
+      const response = await firstValueFrom(
+        this.httpService.patch(`${this.authorizerUrl}/api/contracts/${contractId}/issue`,
+          {},
+          {
+            headers: {
+              'Authorization': authToken || `Bearer ${process.env.JWT_SECRET}`,
+              'Content-Type': 'application/json'
+            }
+          }
+        )
+      );
+      return response.data;
+    } catch (error) {
+      this.logger.error('Error issuing contract:', error.message);
+      const message = error.response?.data?.message || error.message || 'Error issuing contract';
+      const err = new Error(message);
+      (err as any).status = error.response?.status || 500;
+      (err as any).response = { data: { message } };
+      throw err;
     }
   }
 }

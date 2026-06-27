@@ -38,12 +38,10 @@ export class ContractsController {
     } catch (error) {
       this.logger.error(`PATCH /api/contracts/${contractId}/status - Error: ${error.message}`, error.stack);
       
-      // Preservar el status code original
-      if (error.status === 400) {
-        throw new BadRequestException(error.message);
-      }
-      
-      throw error;
+      // Propagate original error with message from Authoriza
+      const statusCode = error.status || 500;
+      const message = error.response?.data?.message || error.message || 'Error updating contract status';
+      throw new BadRequestException(message);
     }
   }
 
@@ -62,6 +60,40 @@ export class ContractsController {
     } catch (error) {
       this.logger.error(`POST /api/contracts/${contractId}/pdf - Error: ${error.message}`, error.stack);
       throw error;
+    }
+  }
+
+  @Patch(':id/sign')
+  async signContract(
+    @Param('id') contractId: string,
+    @Headers('authorization') authHeader?: string
+  ) {
+    this.logger.log(`PATCH /api/contracts/${contractId}/sign - Firmando contrato`);
+    try {
+      const result = await this.contractsService.signContract(contractId, authHeader);
+      this.logger.log(`PATCH /api/contracts/${contractId}/sign - Éxito`);
+      return result;
+    } catch (error) {
+      this.logger.error(`PATCH /api/contracts/${contractId}/sign - Error: ${error.message}`, error.stack);
+      const message = error.response?.data?.message || error.message || 'Error signing contract';
+      throw new BadRequestException(message);
+    }
+  }
+
+  @Patch(':id/issue')
+  async issueContract(
+    @Param('id') contractId: string,
+    @Headers('authorization') authHeader?: string
+  ) {
+    this.logger.log(`PATCH /api/contracts/${contractId}/issue - Emitiendo contrato`);
+    try {
+      const result = await this.contractsService.issueContract(contractId, authHeader);
+      this.logger.log(`PATCH /api/contracts/${contractId}/issue - Éxito`);
+      return result;
+    } catch (error) {
+      this.logger.error(`PATCH /api/contracts/${contractId}/issue - Error: ${error.message}`, error.stack);
+      const message = error.response?.data?.message || error.message || 'Error issuing contract';
+      throw new BadRequestException(message);
     }
   }
 }
