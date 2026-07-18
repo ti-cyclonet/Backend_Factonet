@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { HttpService } from '@nestjs/axios';
 import { ConfigService } from '@nestjs/config';
 import { firstValueFrom } from 'rxjs';
+import * as FormData from 'form-data';
 
 @Injectable()
 export class InvoicesService {
@@ -80,6 +81,10 @@ export class InvoicesService {
         fechaPago: invoice.paymentDate,
         total: Number(invoice.value),
         estado: invoice.status,
+        // Constancia de pago
+        paymentVoucherUrl: invoice.paymentVoucherUrl || null,
+        // Rejection reason (if payment was rejected)
+        rejectionReason: invoice.rejectionReason || null,
         // Datos del cliente para la factura
         clienteNit: basicData?.documentNumber || '',
         clienteTipoPersona: basicData?.strPersonType || '',
@@ -173,6 +178,103 @@ export class InvoicesService {
       // Implementación temporal: simular éxito hasta que Authoriza esté disponible
       this.logger.warn('Returning simulated success response due to Authoriza unavailability');
       return { id, status, message: 'Status updated (simulated)' };
+    }
+  }
+
+  /**
+   * Register a payment with mandatory voucher file.
+   * Forwards the file to Authoriza which handles Cloudinary upload.
+   */
+  async registerPayment(id: number, paymentDate: string, paidAmount: number, file?: Express.Multer.File) {
+    try {
+      // Voucher is mandatory
+      if (!file) {
+        throw new Error('La constancia de pago es obligatoria');
+      }
+
+      const url = `${this.authorizerUrl}/api/invoices/${id}/register-payment`;
+      this.logger.log(`Forwarding payment for invoice ${id} to Authoriza with voucher file (${file.size} bytes)`);
+
+      // Build multipart form data to forward the file to Authoriza
+      const formData = new FormData();
+      formData.append('paymentDate', paymentDate);
+      formData.append('paidAmount', paidAmount.toString());
+      formData.append('voucher', file.buffer, {
+        filename: file.originalname,
+        contentType: file.mimetype,
+      });
+
+      const response = await firstValueFrom(
+        this.httpService.post(url, formData, {
+          headers: {
+            ...formData.getHeaders(),
+          },
+        })
+      );
+
+      return response.data;
+    } catch (error) {
+      this.logger.error(`Error registering payment for invoice ${id}: ${error.message}`);
+      throw new Error(error.response?.data?.message || error.message || 'Failed to register payment');
+    }
+  }
+
+  /**
+   * Get the payment voucher signed URL for a specific invoice.
+   */
+  async getPaymentVoucher(id: number) {
+    try {
+      const url = `${this.authorizerUrl}/api/invoices/${id}/voucher-url`;
+      const response = await firstValueFrom(
+        this.httpService.get(url)
+      );
+
+      return response.data;
+    } catch (error) {
+      this.logger.error(`Error fetching voucher for invoice ${id}: ${error.message}`);
+      throw new Error('Failed to fetch payment voucher');
+    }
+  }
+
+  /**
+   * Admin confirms a reported payment → Authoriza marks it as Paid.
+   */
+  async confirmPayment(id: number) {
+    try {
+      const url = `${this.authorizerUrl}/api/invoices/${id}/confirm-payment`;
+      this.logger.log(`Confirming payment for invoice ${id}`);
+
+      const response = await firstValueFrom(
+        this.httpService.post(url, {}, {
+          headers: { 'Content-Type': 'application/json' }
+        })
+      );
+
+      return response.data;
+    } catch (error) {
+      this.logger.error(`Error confirming payment for invoice ${id}: ${error.message}`);
+      throw new Error(error.response?.data?.message || 'Failed to confirm payment');
+    }
+  }
+
+  /**
+   * Admin rejects a reported payment → Authoriza reverts to Issued.
+   */
+  async rejectPayment(id: number, reason?: string) {
+    try {
+      const url = `${this.authorizerUrl}/api/invoices/${id}/reject-payment`;
+      this.logger.log(`Rejecting payment for invoice ${id}. Reason: ${reason || 'N/A'}`);
+
+      const response = await firstValueFrom(
+        this.httpService.post(url, { reason }, {
+          headers: { 'Content-Type': 'application/json' }
+        })
+      );
+
+      return response.data;
+    } catch (error) {
+      this.logger.error(`Error rejecting payment for invoice ${id}: ${error.message}`);
+      throw new Error(error.response?.data?.message || 'Failed to reject payment');
     }
   }
 }
