@@ -1,4 +1,5 @@
-import { Controller, Get, Post, UseGuards, UseInterceptors, Body, Query, Patch, Param, Request } from '@nestjs/common';
+import { Controller, Get, Post, UseGuards, UseInterceptors, Body, Query, Patch, Param, Request, UploadedFile } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { InvoicesService } from './invoices.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { ActivePeriodInterceptor } from '../common/interceptors/active-period.interceptor';
@@ -33,6 +34,32 @@ export class InvoicesController {
   @UseInterceptors(ActivePeriodInterceptor)
   sweepInvoices() {
     return this.invoicesService.sweepInvoices();
+  }
+
+  @Post(':id/register-payment')
+  @UseInterceptors(FileInterceptor('voucher'))
+  registerPayment(
+    @Param('id') id: string,
+    @Body() body: { paymentDate: string; paidAmount: string },
+    @UploadedFile() file?: Express.Multer.File
+  ) {
+    const paidAmount = parseFloat(body.paidAmount);
+    return this.invoicesService.registerPayment(+id, body.paymentDate, paidAmount, file);
+  }
+
+  @Get(':id/voucher')
+  getPaymentVoucher(@Param('id') id: string) {
+    return this.invoicesService.getPaymentVoucher(+id);
+  }
+
+  @Post(':id/confirm-payment')
+  confirmPayment(@Param('id') id: string) {
+    return this.invoicesService.confirmPayment(+id);
+  }
+
+  @Post(':id/reject-payment')
+  rejectPayment(@Param('id') id: string, @Body() body: { reason?: string }) {
+    return this.invoicesService.rejectPayment(+id, body.reason);
   }
 
   @Patch(':id/status')
