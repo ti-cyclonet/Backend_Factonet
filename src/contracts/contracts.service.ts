@@ -42,7 +42,14 @@ export class ContractsService {
 
       // No filtrar para adminFactonet ni adminInvoices (son sus propios datos)
       if (rol === 'adminFactonet' || rol === 'adminInvoices') {
-        return contracts;
+        // Filter out internal/dev contracts (isBillable=false AND showInLanding=false)
+        // Keep: billable contracts (paid plans) + free commercial plans (showInLanding=true)
+        return contracts.filter((contract: any) => {
+          const pkg = contract.package;
+          if (!pkg) return true;
+          const isInternal = pkg.isBillable === false && pkg.showInLanding === false;
+          return !isInternal;
+        });
       }
       return contracts.filter((contract: any) => !this.isCyclonetTenant(contract));
     } catch (error) {
