@@ -191,17 +191,18 @@ export class PeriodsService {
     }
   }
 
-  async findAll() {
+  async findAll(tenantId: string | null) {
     try {
-      // Para FactoNet, solo obtener periodos globales (tenantId null)
-      const response = await fetch(`${this.authorizaUrl}/api/periods`);
-      
+      // Solo los periodos del tenant del admin logueado, nunca los de otros tenants
+      const tenantParam = encodeURIComponent(tenantId ?? 'null');
+      const response = await fetch(`${this.authorizaUrl}/api/periods?tenantId=${tenantParam}`);
+
       if (!response.ok) {
         throw new HttpException('Error fetching periods from Authoriza', HttpStatus.BAD_GATEWAY);
       }
 
-      const allPeriods = await response.json();
-      return allPeriods;
+      const periods = await response.json();
+      return periods;
     } catch (error) {
       throw new HttpException('Failed to connect to Authoriza service', HttpStatus.SERVICE_UNAVAILABLE);
     }
@@ -438,11 +439,12 @@ export class PeriodsService {
     }
   }
 
-  async getActivePeriod() {
+  async getActivePeriod(tenantId: string | null) {
     try {
-      // Para FactoNet, obtener periodo activo global (tenantId null)
-      const response = await fetch(`${this.authorizaUrl}/api/periods/active/tenant/null`);
-      
+      // Periodo activo del tenant del admin logueado (no el global de otro tenant)
+      const tenantParam = encodeURIComponent(tenantId ?? 'null');
+      const response = await fetch(`${this.authorizaUrl}/api/periods/active/tenant/${tenantParam}`);
+
       if (!response.ok) {
         throw new HttpException('Error fetching active period from Authoriza', HttpStatus.BAD_GATEWAY);
       }

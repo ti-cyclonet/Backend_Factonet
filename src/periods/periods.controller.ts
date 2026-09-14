@@ -1,10 +1,10 @@
-import { Controller, Get, Post, Body, UseGuards, Param, Delete, Patch, Query } from '@nestjs/common';
+import { Controller, Get, Post, Body, UseGuards, Param, Delete, Patch, Query, Request } from '@nestjs/common';
 import { PeriodsService } from './periods.service';
 import { CreatePeriodDto } from './dto/create-period.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 
 @Controller('periods')
-// @UseGuards(JwtAuthGuard) // Temporalmente deshabilitado para pruebas
+@UseGuards(JwtAuthGuard)
 export class PeriodsController {
   constructor(private readonly periodsService: PeriodsService) {}
 
@@ -24,8 +24,8 @@ export class PeriodsController {
   }
 
   @Get()
-  findAll() {
-    return this.periodsService.findAll();
+  findAll(@Request() req) {
+    return this.periodsService.findAll(req.user?.tenantId ?? null);
   }
 
   @Get('global-parameters')
@@ -74,8 +74,8 @@ export class PeriodsController {
   }
 
   @Get('active/current')
-  getActivePeriod() {
-    return this.periodsService.getActivePeriod();
+  getActivePeriod(@Request() req) {
+    return this.periodsService.getActivePeriod(req.user?.tenantId ?? null);
   }
 
   @Get('validation/check-active')
