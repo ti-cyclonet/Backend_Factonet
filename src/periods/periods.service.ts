@@ -28,13 +28,14 @@ export class PeriodsService {
     }
   }
 
-  async createSubperiod(createSubperiodDto: any) {
+  async createSubperiod(createSubperiodDto: any, tenantId: string | null) {
     try {
       const payload = {
         name: createSubperiodDto.nombre,
         startDate: createSubperiodDto.fechaInicio,
         endDate: createSubperiodDto.fechaFin,
-        parentPeriodId: createSubperiodDto.parentPeriodId
+        parentPeriodId: createSubperiodDto.parentPeriodId,
+        tenantId,
       };
       
       const response = await fetch(`${this.authorizaUrl}/api/periods/subperiods`, {
@@ -56,14 +57,15 @@ export class PeriodsService {
     }
   }
 
-  async create(createPeriodDto: CreatePeriodDto) {
+  async create(createPeriodDto: CreatePeriodDto, tenantId: string | null) {
     try {
       console.log('Creating period with data:', createPeriodDto);
-      
+
       const payload = {
         name: createPeriodDto.nombre,
         startDate: createPeriodDto.fechaInicio + 'T00:00:00Z',
         endDate: createPeriodDto.fechaFin + 'T23:59:59Z',
+        tenantId,
       };
       
       console.log('Sending payload to Authoriza:', payload);
