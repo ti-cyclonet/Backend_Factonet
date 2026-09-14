@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, UseGuards, Param, Delete, Patch, Query, Request } from '@nestjs/common';
+import { Controller, Get, Post, Body, UseGuards, Param, Delete, Patch, Query } from '@nestjs/common';
 import { PeriodsService } from './periods.service';
 import { CreatePeriodDto } from './dto/create-period.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -24,8 +24,11 @@ export class PeriodsController {
   }
 
   @Get()
-  findAll(@Request() req) {
-    return this.periodsService.findAll(req.user?.tenantId ?? null);
+  findAll() {
+    // FactoNet solo gestiona sus propios periodos globales (tenantId null);
+    // los periodos con tenantId son de otras apps (p. ej. InOut) que comparten
+    // la misma tabla de periodos en Authoriza.
+    return this.periodsService.findAll(null);
   }
 
   @Get('global-parameters')
@@ -74,8 +77,8 @@ export class PeriodsController {
   }
 
   @Get('active/current')
-  getActivePeriod(@Request() req) {
-    return this.periodsService.getActivePeriod(req.user?.tenantId ?? null);
+  getActivePeriod() {
+    return this.periodsService.getActivePeriod(null);
   }
 
   @Get('validation/check-active')
