@@ -36,6 +36,7 @@ export class PeriodsService {
         endDate: createSubperiodDto.fechaFin,
         parentPeriodId: createSubperiodDto.parentPeriodId,
         tenantId,
+        source: 'FACTONET',
       };
       
       const response = await fetch(`${this.authorizaUrl}/api/periods/subperiods`, {
@@ -66,6 +67,7 @@ export class PeriodsService {
         startDate: createPeriodDto.fechaInicio + 'T00:00:00Z',
         endDate: createPeriodDto.fechaFin + 'T23:59:59Z',
         tenantId,
+        source: 'FACTONET',
       };
       
       console.log('Sending payload to Authoriza:', payload);
@@ -195,9 +197,11 @@ export class PeriodsService {
 
   async findAll(tenantId: string | null) {
     try {
-      // Solo los periodos del tenant del admin logueado, nunca los de otros tenants
+      // Solo los periodos del tenant del admin logueado y de la app FactoNet,
+      // nunca los de otros tenants ni los de otra app (p. ej. InOut) aunque
+      // compartan tenantId.
       const tenantParam = encodeURIComponent(tenantId ?? 'null');
-      const response = await fetch(`${this.authorizaUrl}/api/periods?tenantId=${tenantParam}`);
+      const response = await fetch(`${this.authorizaUrl}/api/periods?tenantId=${tenantParam}&source=FACTONET`);
 
       if (!response.ok) {
         throw new HttpException('Error fetching periods from Authoriza', HttpStatus.BAD_GATEWAY);
@@ -443,9 +447,10 @@ export class PeriodsService {
 
   async getActivePeriod(tenantId: string | null) {
     try {
-      // Periodo activo del tenant del admin logueado (no el global de otro tenant)
+      // Periodo activo del tenant del admin logueado y de la app FactoNet (no
+      // el de otro tenant, ni el de InOut aunque comparta tenantId).
       const tenantParam = encodeURIComponent(tenantId ?? 'null');
-      const response = await fetch(`${this.authorizaUrl}/api/periods/active/tenant/${tenantParam}`);
+      const response = await fetch(`${this.authorizaUrl}/api/periods/active/tenant/${tenantParam}?source=FACTONET`);
 
       if (!response.ok) {
         if (response.status === 404) return null;
