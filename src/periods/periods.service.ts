@@ -448,11 +448,17 @@ export class PeriodsService {
       const response = await fetch(`${this.authorizaUrl}/api/periods/active/tenant/${tenantParam}`);
 
       if (!response.ok) {
+        if (response.status === 404) return null;
         throw new HttpException('Error fetching active period from Authoriza', HttpStatus.BAD_GATEWAY);
       }
 
-      return await response.json();
+      // Authoriza responde 200 con body vacío cuando no hay periodo activo para
+      // el tenant (no un JSON "null"), y response.json() revienta con body vacío.
+      const text = await response.text();
+      if (!text) return null;
+      return JSON.parse(text);
     } catch (error) {
+      if (error instanceof HttpException) throw error;
       throw new HttpException('Failed to connect to Authoriza service', HttpStatus.SERVICE_UNAVAILABLE);
     }
   }
