@@ -29,11 +29,11 @@ export class PeriodsController {
 
   @Get()
   @UseGuards(AdminFactonetGuard)
-  findAll(@Request() req) {
-    // Solo los periodos del tenant del admin logueado y de la app FactoNet;
-    // la tabla de periodos en Authoriza es compartida con otras apps (p. ej.
-    // InOut) y otros clientes.
-    return this.periodsService.findAll(req.user?.tenantId ?? null);
+  findAll() {
+    // Los periodos de FactoNet son globales (solo adminFactonet los crea); la
+    // tabla de periodos en Authoriza es compartida con otras apps (p. ej.
+    // InOut), por eso se filtra por source, no por tenant.
+    return this.periodsService.findAll();
   }
 
   @Get('global-parameters')
@@ -92,10 +92,12 @@ export class PeriodsController {
 
   // Sin AdminFactonetGuard a proposito: ActivePeriodGuard del frontend llama
   // este endpoint para TODOS los roles al entrar a Contratos/Facturas, no
-  // solo el administrador.
+  // solo el administrador. Es global (no depende del tenant de quien
+  // pregunta): todos los clientes se rigen por el mismo periodo que
+  // configura adminFactonet.
   @Get('active/current')
-  getActivePeriod(@Request() req) {
-    return this.periodsService.getActivePeriod(req.user?.tenantId ?? null);
+  getActivePeriod() {
+    return this.periodsService.getActivePeriod();
   }
 
   @Get('validation/check-active')
