@@ -15,6 +15,7 @@ jobs:
           username: ec2-user
           key: ${{ secrets.EC2_SSH_KEY }}
           script: |
+            set -e
             echo "📦 Pulling latest code..."
             cd /opt/cyclonet/FactoNet/Backend_Factonet
             git pull origin master
