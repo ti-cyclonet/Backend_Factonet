@@ -1,22 +1,21 @@
-import { Controller, Get, Logger } from '@nestjs/common';
+import { Controller, Get, Headers, Request, UseGuards } from '@nestjs/common';
 import { DashboardService } from './dashboard.service';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 
 @Controller('dashboard')
+@UseGuards(JwtAuthGuard)
 export class DashboardController {
-  private readonly logger = new Logger(DashboardController.name);
-
   constructor(private readonly dashboardService: DashboardService) {}
 
+  /** Resumen del Dashboard (admin: todo el ecosistema; cliente: lo suyo). */
+  @Get('overview')
+  overview(@Request() req, @Headers('authorization') auth?: string) {
+    return this.dashboardService.getOverview(req.user?.tenantId, req.user?.rol, auth);
+  }
+
+  /** Conteos para las notificaciones del encabezado. */
   @Get('metrics')
-  async getMetrics() {
-    this.logger.log('GET /api/dashboard/metrics - Consultando métricas del dashboard');
-    try {
-      const result = await this.dashboardService.getMetrics();
-      this.logger.log('GET /api/dashboard/metrics - Métricas obtenidas exitosamente');
-      return result;
-    } catch (error) {
-      this.logger.error(`GET /api/dashboard/metrics - Error: ${error.message}`);
-      throw error;
-    }
+  metrics(@Request() req, @Headers('authorization') auth?: string) {
+    return this.dashboardService.getMetrics(req.user?.tenantId, req.user?.rol, auth);
   }
 }
