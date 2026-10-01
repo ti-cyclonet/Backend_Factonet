@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { HttpService } from '@nestjs/axios';
 import { ConfigService } from '@nestjs/config';
 import { firstValueFrom } from 'rxjs';
+import { billingScope } from '../common/authoriza-internal';
 
 @Injectable()
 export class ContractsService {
@@ -17,21 +18,17 @@ export class ContractsService {
   }
 
   async findAll(tenantId?: string, rol?: string, authToken?: string) {
+    // Cliente: solo los contratos de su tenant; admin: todos; otro rol: 403
+    const scope = billingScope(rol, tenantId);
     try {
-      let url = `${this.authorizerUrl}/api/contracts`;
-      
-      // Si el usuario tiene rol 'adminInvoices', usar el endpoint específico por tenant
-      // Si tiene rol 'adminFactonet', usar el endpoint general
-      if (rol === 'adminInvoices' && tenantId) {
-        url = `${this.authorizerUrl}/api/contracts/tenant/${tenantId}`;
-      } else {
-        url = `${this.authorizerUrl}/api/contracts?limit=100&offset=0`;
-      }
-      
+      const url = 'tenantId' in scope
+        ? `${this.authorizerUrl}/api/contracts/tenant/${scope.tenantId}`
+        : `${this.authorizerUrl}/api/contracts?limit=100&offset=0`;
+
       const response = await firstValueFrom(
         this.httpService.get(url, {
           headers: {
-            'Authorization': authToken || `Bearer ${process.env.JWT_SECRET}`,
+            ...(authToken ? { 'Authorization': authToken } : {}),
             'Content-Type': 'application/json'
           }
         })
@@ -70,7 +67,7 @@ export class ContractsService {
           { status },
           {
             headers: {
-              'Authorization': authToken || `Bearer ${process.env.JWT_SECRET}`,
+              ...(authToken ? { 'Authorization': authToken } : {}),
               'Content-Type': 'application/json'
             }
           }
@@ -97,7 +94,7 @@ export class ContractsService {
           { pdfBuffer: base64PDF },
           {
             headers: {
-              'Authorization': authToken || `Bearer ${process.env.JWT_SECRET}`,
+              ...(authToken ? { 'Authorization': authToken } : {}),
               'Content-Type': 'application/json'
             }
           }
@@ -118,7 +115,7 @@ export class ContractsService {
           {},
           {
             headers: {
-              'Authorization': authToken || `Bearer ${process.env.JWT_SECRET}`,
+              ...(authToken ? { 'Authorization': authToken } : {}),
               'Content-Type': 'application/json'
             }
           }
@@ -142,7 +139,7 @@ export class ContractsService {
           {},
           {
             headers: {
-              'Authorization': authToken || `Bearer ${process.env.JWT_SECRET}`,
+              ...(authToken ? { 'Authorization': authToken } : {}),
               'Content-Type': 'application/json'
             }
           }

@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { HttpService } from '@nestjs/axios';
 import { ConfigService } from '@nestjs/config';
 import { firstValueFrom } from 'rxjs';
+import { authorizaInternalHeaders } from '../common/authoriza-internal';
 import { ReportFiltersDto } from './dto/report-filters.dto';
 
 @Injectable()
@@ -178,7 +179,8 @@ export class ReportsService {
             startDate: filters.startDate,
             endDate: filters.endDate,
             contractId: filters.contractId
-          }
+          },
+          headers: authorizaInternalHeaders(),
         })
       );
 
@@ -399,7 +401,7 @@ export class ReportsService {
   private async getInvoicesData(filters?: ReportFiltersDto) {
     try {
       const response = await firstValueFrom(
-        this.httpService.get(`${this.authorizerUrl}/api/invoices`)
+        this.httpService.get(`${this.authorizerUrl}/api/invoices`, { headers: authorizaInternalHeaders() })
       );
 
       let invoices = response.data;
