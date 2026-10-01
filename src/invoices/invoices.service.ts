@@ -1,8 +1,9 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { ForbiddenException, Injectable, Logger } from '@nestjs/common';
 import { HttpService } from '@nestjs/axios';
 import { ConfigService } from '@nestjs/config';
 import { firstValueFrom } from 'rxjs';
 import * as FormData from 'form-data';
+import { authorizaInternalHeaders, billingScope } from '../common/authoriza-internal';
 
 @Injectable()
 export class InvoicesService {
@@ -17,19 +18,16 @@ export class InvoicesService {
   }
 
   async findAll(tenantId?: string, rol?: string) {
+    // Fuera del try: un rol sin acceso recibe 403, no una lista vacía
+    const scope = billingScope(rol, tenantId);
     try {
       const params: any = {};
-      
-      // Si el usuario tiene rol 'adminInvoices', filtrar por tenantId
-      // Si tiene rol 'adminFactonet', no filtrar (ver todas las facturas)
-      if (rol === 'adminInvoices' && tenantId) {
-        params.tenantId = tenantId;
-      }
+      if ('tenantId' in scope) params.tenantId = scope.tenantId;
 
       this.logger.log(`findAll called - rol: ${rol}, tenantId: ${tenantId}, params: ${JSON.stringify(params)}`);
       
       const response = await firstValueFrom(
-        this.httpService.get(`${this.authorizerUrl}/api/invoices`, { params })
+        this.httpService.get(`${this.authorizerUrl}/api/invoices`, { params, headers: authorizaInternalHeaders() })
       );
 
       this.logger.log(`Authoriza returned ${response.data?.length || 0} invoices`);
@@ -54,13 +52,26 @@ export class InvoicesService {
       if (contractId) params.contractId = contractId;
       
       const response = await firstValueFrom(
-        this.httpService.get(`${this.authorizerUrl}/api/invoices/profit-report`, { params })
+        this.httpService.get(`${this.authorizerUrl}/api/invoices/profit-report`, { params, headers: authorizaInternalHeaders() })
       );
       
       return response.data;
     } catch (error) {
       this.logger.error('Error fetching profit report from Authoriza:', error.message);
       return { totalInvoiced: 0, totalProfit: 0, invoiceCount: 0, details: [] };
+    }
+  }
+
+  /**
+   * El cliente solo puede operar sobre facturas de su tenant (reportar pago,
+   * ver la constancia). El administrador de FactoNet, sobre cualquiera.
+   */
+  async assertInvoiceAccess(id: number, tenantId?: string, rol?: string) {
+    const scope = billingScope(rol, tenantId);
+    if ('all' in scope) return;
+    const own = await this.findAll(tenantId, rol);
+    if (!own.some((inv: any) => Number(inv.id) === Number(id))) {
+      throw new ForbiddenException('Esta factura no pertenece a tu cuenta.');
     }
   }
 
@@ -129,7 +140,8 @@ export class InvoicesService {
           params: {
             startDate,
             endDate
-          }
+          },
+          headers: authorizaInternalHeaders(),
         })
       );
       
@@ -147,7 +159,7 @@ export class InvoicesService {
       this.logger.log(`Calling sweep endpoint: ${url}`);
       
       const response = await firstValueFrom(
-        this.httpService.post(url)
+        this.httpService.post(url, {}, { headers: authorizaInternalHeaders() })
       );
       
       return response.data;
@@ -164,9 +176,7 @@ export class InvoicesService {
       
       const response = await firstValueFrom(
         this.httpService.patch(url, { status }, {
-          headers: {
-            'Content-Type': 'application/json'
-          }
+          headers: authorizaInternalHeaders({ 'Content-Type': 'application/json' })
         })
       );
       
@@ -174,10 +184,9 @@ export class InvoicesService {
     } catch (error) {
       this.logger.error(`Error updating invoice status in Authoriza: ${error.response?.status} - ${error.message}`);
       this.logger.error(`URL attempted: ${this.authorizerUrl}/api/invoices/${id}/status`);
-      
-      // Implementación temporal: simular éxito hasta que Authoriza esté disponible
-      this.logger.warn('Returning simulated success response due to Authoriza unavailability');
-      return { id, status, message: 'Status updated (simulated)' };
+      // Antes se devolvía un "éxito simulado": la pantalla mostraba el estado
+      // cambiado aunque Authoriza no lo hubiera guardado.
+      throw new Error(error.response?.data?.message || 'No se pudo actualizar el estado de la factura');
     }
   }
 
@@ -206,9 +215,7 @@ export class InvoicesService {
 
       const response = await firstValueFrom(
         this.httpService.post(url, formData, {
-          headers: {
-            ...formData.getHeaders(),
-          },
+          headers: authorizaInternalHeaders(formData.getHeaders()),
         })
       );
 
@@ -226,7 +233,7 @@ export class InvoicesService {
     try {
       const url = `${this.authorizerUrl}/api/invoices/${id}/voucher-url`;
       const response = await firstValueFrom(
-        this.httpService.get(url)
+        this.httpService.get(url, { headers: authorizaInternalHeaders() })
       );
 
       return response.data;
@@ -246,7 +253,7 @@ export class InvoicesService {
 
       const response = await firstValueFrom(
         this.httpService.post(url, {}, {
-          headers: { 'Content-Type': 'application/json' }
+          headers: authorizaInternalHeaders({ 'Content-Type': 'application/json' })
         })
       );
 
@@ -267,7 +274,7 @@ export class InvoicesService {
 
       const response = await firstValueFrom(
         this.httpService.post(url, { reason }, {
-          headers: { 'Content-Type': 'application/json' }
+          headers: authorizaInternalHeaders({ 'Content-Type': 'application/json' })
         })
       );
 

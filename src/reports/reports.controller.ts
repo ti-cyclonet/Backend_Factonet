@@ -2,9 +2,11 @@ import { Controller, Get, Query, UseGuards } from '@nestjs/common';
 import { ReportsService } from './reports.service';
 import { ReportFiltersDto } from './dto/report-filters.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { AdminFactonetGuard } from '../auth/guards/admin-factonet.guard';
 
+// Reportes con datos de todos los clientes: solo el administrador de FactoNet
 @Controller('reports')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, AdminFactonetGuard)
 export class ReportsController {
   constructor(private readonly reportsService: ReportsService) {}
 
