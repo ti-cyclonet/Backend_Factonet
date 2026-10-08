@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { InvoicesService } from '../invoices/invoices.service';
 import { ContractsService } from '../contracts/contracts.service';
+import { totalAPagar } from '../pagos/total-factura';
 
 /** Colombia no tiene horario de verano: UTC-5 fijo. */
 const OFFSET = 5 * 60 * 60 * 1000;
@@ -12,6 +13,17 @@ const monthStart = (now: Date, delta = 0) => {
 const key = (d: Date) => new Date(d.getTime() - OFFSET).toISOString().slice(0, 7);
 const num = (v: any) => Number(v) || 0;
 const date = (v: any): Date | null => (v ? new Date(v) : null);
+/** 'YYYY-MM-DD' de hoy en Bogotá. */
+const todayKey = (now: Date) => new Date(now.getTime() - OFFSET).toISOString().slice(0, 10);
+/** Días de calendario entre hoy (Bogotá) y una fecha 'YYYY-MM-DD'; negativo si ya pasó. */
+const daysUntil = (v: any, now: Date): number | null => {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(v || ''));
+  if (!m) return null;
+  const t = todayKey(now);
+  return Math.round((Date.UTC(+m[1], +m[2] - 1, +m[3]) - Date.UTC(+t.slice(0, 4), +t.slice(5, 7) - 1, +t.slice(8, 10))) / DAY);
+};
+/** TOTAL de la factura (valor ± IVA, descuentos y mora), el mismo de la pantalla, el PDF y la pasarela. */
+const valor = (i: any) => totalAPagar(i);
 
 /** Estados de factura que ya se le cobran al cliente (no borrador, no pagada). */
 const OPEN = ['Issued', 'In arrears', 'Notification1', 'Notification2', 'Suspended', 'Payment Reported'];
@@ -41,14 +53,19 @@ export class DashboardService {
 
     const paid = invoices.filter((i: any) => i.estado === 'Paid');
     const open = invoices.filter((i: any) => OPEN.includes(i.estado));
-    const overdue = open.filter((i: any) => OVERDUE.includes(i.estado) || (date(i.fechaVencimiento) && date(i.fechaVencimiento)! < now && i.estado !== 'Payment Reported'));
+    // Vencida = su fecha de vencimiento ya pasó en Bogotá. Antes se comparaba
+    // new Date('YYYY-MM-DD') (medianoche UTC = 7 p. m. del día anterior en
+    // Colombia) con la hora actual y se marcaba vencida la noche anterior.
+    const overdue = open.filter((i: any) => OVERDUE.includes(i.estado) || ((daysUntil(i.fechaVencimiento, now) ?? 0) < 0 && i.estado !== 'Payment Reported'));
     const reported = invoices.filter((i: any) => i.estado === 'Payment Reported');
     const unconfirmed = invoices.filter((i: any) => i.estado === 'Unconfirmed');
     const dueSoon = open.filter((i: any) => {
-      const d = date(i.fechaVencimiento);
-      return d && d >= now && d.getTime() - now.getTime() <= 7 * DAY && !overdue.includes(i);
+      const d = daysUntil(i.fechaVencimiento, now);
+      return d !== null && d >= 0 && d <= 7 && !overdue.includes(i);
     });
-    const sum = (l: any[]) => l.reduce((s, i) => s + num(i.total), 0);
+    // Antes sumaba i.total (valor sin IVA ni conceptos): "Por pagar" no
+    // coincidía con el total de Facturas.
+    const sum = (l: any[]) => l.reduce((s, i) => s + valor(i), 0);
     const billed = (a: Date, b: Date) => invoices.filter((i: any) => i.estado !== 'Unconfirmed' && between(date(i.fechaEmision), a, b));
     const collected = (a: Date, b: Date) => paid.filter((i: any) => between(date(i.fechaPago) || date(i.fechaEmision), a, b));
 
@@ -61,9 +78,9 @@ export class DashboardService {
     const byMonth = new Map(months.map((m) => [m.key, m]));
     for (const i of invoices) {
       const e = date(i.fechaEmision);
-      if (i.estado !== 'Unconfirmed' && e && e >= m5) { const m = byMonth.get(key(e)); if (m) m.billed += num(i.total); }
+      if (i.estado !== 'Unconfirmed' && e && e >= m5) { const m = byMonth.get(key(e)); if (m) m.billed += valor(i); }
       const p = i.estado === 'Paid' ? date(i.fechaPago) || e : null;
-      if (p && p >= m5) { const m = byMonth.get(key(p)); if (m) m.collected += num(i.total); }
+      if (p && p >= m5) { const m = byMonth.get(key(p)); if (m) m.collected += valor(i); }
     }
 
     // Estados (para la distribución)
@@ -74,8 +91,8 @@ export class DashboardService {
     const debt = new Map<string, { name: string; balance: number; overdue: number; count: number }>();
     for (const i of open) {
       const c = debt.get(i.cliente) || { name: i.cliente, balance: 0, overdue: 0, count: 0 };
-      c.balance += num(i.total); c.count++;
-      if (overdue.includes(i)) c.overdue += num(i.total);
+      c.balance += valor(i); c.count++;
+      if (overdue.includes(i)) c.overdue += valor(i);
       debt.set(i.cliente, c);
     }
 
@@ -86,7 +103,7 @@ export class DashboardService {
     const needsPdf = contracts.filter((c: any) => c.status === 'PENDING' && !c.pdfUrl);
     const needsIssue = contracts.filter((c: any) => c.status === 'PENDING' && c.pdfUrl && !c.issuedAt);
 
-    const invoiceRow = (i: any) => ({ id: i.id, numero: i.numero, cliente: i.cliente, total: num(i.total), estado: i.estado, vence: i.fechaVencimiento });
+    const invoiceRow = (i: any) => ({ id: i.id, numero: i.numero, cliente: i.cliente, total: valor(i), estado: i.estado, vence: i.fechaVencimiento });
     const billedMonth = sum(billed(m0, end));
     const collectedMonth = sum(collected(m0, end));
 
