@@ -3,6 +3,7 @@ import { HttpService } from '@nestjs/axios';
 import { ConfigService } from '@nestjs/config';
 import { firstValueFrom } from 'rxjs';
 import { billingScope } from '../common/authoriza-internal';
+import { errorDeAuthoriza } from '../common/authoriza-error';
 
 @Injectable()
 export class ContractsService {
@@ -51,7 +52,8 @@ export class ContractsService {
       return contracts.filter((contract: any) => !this.isCyclonetTenant(contract));
     } catch (error) {
       this.logger.error('Error fetching contracts from Authoriza:', error.message);
-      return [];
+      // Antes devolvía []: un fallo de Authoriza se veía como "no hay contratos"
+      throw errorDeAuthoriza(error, 'No se pudieron consultar los contratos. Intenta de nuevo en un momento.');
     }
   }
 
@@ -104,7 +106,7 @@ export class ContractsService {
       return response.data.pdfUrl;
     } catch (error) {
       this.logger.error('Error uploading PDF:', error.message);
-      throw new Error('Failed to upload PDF to server');
+      throw errorDeAuthoriza(error, 'No se pudo subir el PDF del contrato.');
     }
   }
 
