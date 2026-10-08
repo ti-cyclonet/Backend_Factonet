@@ -130,6 +130,29 @@ El backend está configurado para conectarse con Frontend_Factonet en:
 - **Desarrollo:** `http://localhost:4202`
 - **CORS habilitado** para desarrollo
 
+## 💳 Pago en línea (Wompi) — apagado por defecto
+
+El cliente paga hoy reportando el pago con una constancia, y el administrador lo verifica. El módulo `src/pagos/` agrega el pago en línea con Wompi (PSE, tarjeta, Nequi y botón Bancolombia), pero **solo se enciende** con `PASARELA_ACTIVA=true` y todas las llaves configuradas. Mientras tanto, el portal solo muestra "Reportar pago".
+
+```env
+PASARELA_ACTIVA=true
+WOMPI_ENTORNO=sandbox                    # o produccion
+WOMPI_LLAVE_PUBLICA=pub_test_...         # pub_prod_... en producción
+WOMPI_SECRETO_INTEGRIDAD=test_integrity_...
+WOMPI_SECRETO_EVENTOS=test_events_...
+FACTONET_URL_PORTAL=https://<dominio del portal FactoNet>
+```
+
+En el panel de Wompi (Desarrolladores), la URL de eventos es `https://api.cyclonet.com.co/api/billing/pagos/wompi/eventos`.
+
+Cómo funciona:
+
+1. `POST /api/pagos/facturas/:id/checkout`: el servidor calcula el TOTAL (valor ± conceptos, con la mora del día que trae Authoriza), lo firma y devuelve la URL de Wompi. El navegador no puede cambiar el monto.
+2. Wompi avisa a `POST /api/pagos/wompi/eventos`. Se verifica la firma con el secreto de eventos, se registra el pago en Authoriza (que congela la mora a la fecha del pago) y, si el valor cubre el total, se confirma: la factura queda **Pagada** sin intervención del administrador.
+3. Al volver, el portal llama `GET /api/pagos/wompi/transacciones/:id`. Este consulta la transacción en Wompi y la aplica si el evento no llegó; un pago ya aplicado no se repite.
+
+Si Wompi cobró menos del total (por ejemplo, la mora subió entre el pago y el registro), la factura queda en "Pago reportado" para que el administrador decida. Un pago reportado con constancia nunca se pisa.
+
 ## 📝 Scripts disponibles
 
 ```bash
