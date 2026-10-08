@@ -1,6 +1,7 @@
 import { Controller, Get, Post, UseGuards, UseInterceptors, Body, Query, Patch, Param, Request, UploadedFile } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { InvoicesService } from './invoices.service';
+import { RegisterPaymentDto } from './dto/register-payment.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { AdminFactonetGuard } from '../auth/guards/admin-factonet.guard';
 import { ActivePeriodInterceptor } from '../common/interceptors/active-period.interceptor';
@@ -45,12 +46,11 @@ checkInvoicesInPeriod(@Query('startDate') startDate: string, @Query('endDate') e
   async registerPayment(
     @Request() req,
     @Param('id') id: string,
-    @Body() body: { paymentDate: string; paidAmount: string },
+    @Body() body: RegisterPaymentDto,
     @UploadedFile() file?: Express.Multer.File
   ) {
     await this.invoicesService.assertInvoiceAccess(+id, req.user?.tenantId, req.user?.rol);
-    const paidAmount = parseFloat(body.paidAmount);
-    return this.invoicesService.registerPayment(+id, body.paymentDate, paidAmount, file);
+    return this.invoicesService.registerPayment(+id, body.paymentDate, Number(body.paidAmount), file);
   }
 
   @Get(':id/voucher')

@@ -1,9 +1,10 @@
-import { ForbiddenException, Injectable, Logger } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, Logger } from '@nestjs/common';
 import { HttpService } from '@nestjs/axios';
 import { ConfigService } from '@nestjs/config';
 import { firstValueFrom } from 'rxjs';
 import * as FormData from 'form-data';
 import { authorizaInternalHeaders, billingScope } from '../common/authoriza-internal';
+import { errorDeAuthoriza } from '../common/authoriza-error';
 
 @Injectable()
 export class InvoicesService {
@@ -42,7 +43,9 @@ export class InvoicesService {
       return this.mapInvoices(invoices);
     } catch (error) {
       this.logger.error(`Error fetching invoices from Authoriza: ${error.message}`, error.stack);
-      return [];
+      // Antes devolvía []: si Authoriza fallaba, el cliente veía "no tienes
+      // facturas" y el tablero en cero, como si no debiera nada.
+      throw errorDeAuthoriza(error, 'No se pudieron consultar las facturas. Intenta de nuevo en un momento.');
     }
   }
 
@@ -165,7 +168,7 @@ export class InvoicesService {
       return response.data;
     } catch (error) {
       this.logger.error(`Error executing invoice sweep to ${this.authorizerUrl}:`, error.response?.status, error.message);
-      throw new Error('Failed to execute invoice sweep');
+      throw errorDeAuthoriza(error, 'No se pudo ejecutar la revisión de facturas.');
     }
   }
 
@@ -186,7 +189,7 @@ export class InvoicesService {
       this.logger.error(`URL attempted: ${this.authorizerUrl}/api/invoices/${id}/status`);
       // Antes se devolvía un "éxito simulado": la pantalla mostraba el estado
       // cambiado aunque Authoriza no lo hubiera guardado.
-      throw new Error(error.response?.data?.message || 'No se pudo actualizar el estado de la factura');
+      throw errorDeAuthoriza(error, 'No se pudo actualizar el estado de la factura.');
     }
   }
 
@@ -198,7 +201,7 @@ export class InvoicesService {
     try {
       // Voucher is mandatory
       if (!file) {
-        throw new Error('La constancia de pago es obligatoria');
+        throw new BadRequestException('La constancia de pago es obligatoria.');
       }
 
       const url = `${this.authorizerUrl}/api/invoices/${id}/register-payment`;
@@ -222,7 +225,7 @@ export class InvoicesService {
       return response.data;
     } catch (error) {
       this.logger.error(`Error registering payment for invoice ${id}: ${error.message}`);
-      throw new Error(error.response?.data?.message || error.message || 'Failed to register payment');
+      throw errorDeAuthoriza(error, 'No se pudo registrar el pago.');
     }
   }
 
@@ -239,7 +242,7 @@ export class InvoicesService {
       return response.data;
     } catch (error) {
       this.logger.error(`Error fetching voucher for invoice ${id}: ${error.message}`);
-      throw new Error('Failed to fetch payment voucher');
+      throw errorDeAuthoriza(error, 'No se pudo obtener la constancia de pago.');
     }
   }
 
@@ -260,7 +263,7 @@ export class InvoicesService {
       return response.data;
     } catch (error) {
       this.logger.error(`Error confirming payment for invoice ${id}: ${error.message}`);
-      throw new Error(error.response?.data?.message || 'Failed to confirm payment');
+      throw errorDeAuthoriza(error, 'No se pudo confirmar el pago.');
     }
   }
 
@@ -281,7 +284,7 @@ export class InvoicesService {
       return response.data;
     } catch (error) {
       this.logger.error(`Error rejecting payment for invoice ${id}: ${error.message}`);
-      throw new Error(error.response?.data?.message || 'Failed to reject payment');
+      throw errorDeAuthoriza(error, 'No se pudo rechazar el pago.');
     }
   }
 }
