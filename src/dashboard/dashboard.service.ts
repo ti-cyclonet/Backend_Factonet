@@ -13,6 +13,7 @@ const monthStart = (now: Date, delta = 0) => {
 const key = (d: Date) => new Date(d.getTime() - OFFSET).toISOString().slice(0, 7);
 const num = (v: any) => Number(v) || 0;
 const date = (v: any): Date | null => (v ? new Date(v) : null);
+const between = (d: Date | null, a: Date, b: Date) => !!d && d >= a && d < b;
 /** 'YYYY-MM-DD' de hoy en Bogotá. */
 const todayKey = (now: Date) => new Date(now.getTime() - OFFSET).toISOString().slice(0, 10);
 /** Días de calendario entre hoy (Bogotá) y una fecha 'YYYY-MM-DD'; negativo si ya pasó. */
@@ -28,6 +29,16 @@ const valor = (i: any) => totalAPagar(i);
 /** Estados de factura que ya se le cobran al cliente (no borrador, no pagada). */
 const OPEN = ['Issued', 'In arrears', 'Notification1', 'Notification2', 'Suspended', 'Payment Reported'];
 const OVERDUE = ['In arrears', 'Notification1', 'Notification2', 'Suspended'];
+/** Contratos que ya terminaron (no cuentan como cartera de clientes). */
+const ENDED = ['CANCELLED', 'EXPIRED', 'TERMINATED', 'DELETED'];
+/** contract.value guarda el valor ANUAL del contrato. */
+const monthlyOf = (c: any) => Math.round(num(c.value) / 12);
+/** Nombre del cliente del contrato (empresa o persona). */
+export const contractClient = (c: any): string => {
+  const b = c?.user?.basicData || {};
+  const person = `${b.naturalPersonData?.firstName || ''} ${b.naturalPersonData?.firstSurname || ''}`.trim();
+  return b.legalEntityData?.businessName || person || c?.user?.strUserName || c?.user?.email || 'Cliente';
+};
 
 /**
  * Resumen del Dashboard de FactoNet con el mismo alcance que las listas:
@@ -48,7 +59,6 @@ export class DashboardService {
       this.contracts.findAll(tenantId, rol, auth).catch(() => []),
     ]);
     const m0 = monthStart(now), m1 = monthStart(now, -1), m5 = monthStart(now, -5);
-    const between = (d: Date | null, a: Date, b: Date) => !!d && d >= a && d < b;
     const end = new Date(now.getTime() + 1);
 
     const paid = invoices.filter((i: any) => i.estado === 'Paid');
@@ -103,6 +113,8 @@ export class DashboardService {
     const needsPdf = contracts.filter((c: any) => c.status === 'PENDING' && !c.pdfUrl);
     const needsIssue = contracts.filter((c: any) => c.status === 'PENDING' && c.pdfUrl && !c.issuedAt);
 
+    const contractsBlock = isAdmin ? this.contractsSummary(contracts, now, m0, end, months) : null;
+
     const invoiceRow = (i: any) => ({ id: i.id, numero: i.numero, cliente: i.cliente, total: valor(i), estado: i.estado, vence: i.fechaVencimiento });
     const billedMonth = sum(billed(m0, end));
     const collectedMonth = sum(collected(m0, end));
@@ -140,6 +152,79 @@ export class DashboardService {
       topDebtors: isAdmin ? [...debt.values()].sort((a, b) => b.balance - a.balance).slice(0, 5) : [],
       recentInvoices: [...invoices].filter((i: any) => i.estado !== 'Unconfirmed' || isAdmin)
         .sort((a: any, b: any) => +new Date(b.fechaEmision) - +new Date(a.fechaEmision)).slice(0, 8).map(invoiceRow),
+      // Ids vistos en esta consulta: el panel compara con la anterior para
+      // avisar (burbuja con sonido) de facturas y contratos nuevos.
+      invoiceIds: invoices.filter((i: any) => i.estado !== 'Unconfirmed' || isAdmin).map((i: any) => i.id),
+      contracts: contractsBlock,
+    };
+  }
+
+  /** Indicadores de contratos para el administrador. */
+  private contractsSummary(contracts: any[], now: Date, m0: Date, end: Date, months: { key: string; label: string }[]) {
+    const active = contracts.filter((c: any) => c.status === 'ACTIVE');
+    const inProcess = contracts.filter((c: any) => c.status === 'PENDING' || c.status === 'DRAFT');
+    const suspended = contracts.filter((c: any) => c.status === 'SUSPENDED');
+    const expiring = active
+      .map((c: any) => ({ c, days: daysUntil(c.endDate, now) }))
+      .filter((x) => x.days !== null && x.days >= 0 && x.days <= 30)
+      .sort((a, b) => a.days! - b.days!);
+    const startKey = (c: any) => String(c.startDate || c.createdAt || '').slice(0, 7);
+    const created = (c: any) => date(c.createdAt) || date(c.startDate);
+    const newThisMonth = contracts.filter((c: any) => !ENDED.includes(c.status) && between(created(c), m0, end));
+    const mrr = active.reduce((s: number, c: any) => s + monthlyOf(c), 0);
+
+    const statusCount: Record<string, number> = {};
+    for (const c of contracts) statusCount[c.status] = (statusCount[c.status] || 0) + 1;
+
+    const pkgs = new Map<string, { name: string; active: number; mrr: number }>();
+    for (const c of active) {
+      const name = c.package?.name || 'Sin paquete';
+      const p = pkgs.get(name) || { name, active: 0, mrr: 0 };
+      p.active++; p.mrr += monthlyOf(c);
+      pkgs.set(name, p);
+    }
+
+    const modes: Record<string, number> = {};
+    for (const c of active) modes[c.mode || 'MONTHLY'] = (modes[c.mode || 'MONTHLY'] || 0) + 1;
+
+    // Altas (por fecha de inicio) y bajas (terminados, por última actualización) de 6 meses
+    const series = months.map((m) => ({ key: m.key, label: m.label, started: 0, ended: 0 }));
+    const byKey = new Map(series.map((m) => [m.key, m]));
+    for (const c of contracts) {
+      const s = byKey.get(startKey(c));
+      if (s && c.status !== 'DELETED' && c.status !== 'DRAFT') s.started++;
+      if (ENDED.includes(c.status) && c.status !== 'DELETED') {
+        const e = byKey.get(String(c.updatedAt || '').slice(0, 7));
+        if (e) e.ended++;
+      }
+    }
+
+    const row = (c: any, days?: number | null) => ({
+      id: c.id, code: c.code, cliente: contractClient(c), paquete: c.package?.name || '—', estado: c.status,
+      mensual: monthlyOf(c), inicio: c.startDate, fin: c.endDate || null, ...(days !== undefined ? { dias: days } : {}),
+    });
+
+    return {
+      kpis: {
+        total: contracts.filter((c: any) => c.status !== 'DELETED').length,
+        active: active.length,
+        newThisMonth: newThisMonth.length,
+        inProcess: inProcess.length,
+        suspended: suspended.length,
+        expiringCount: expiring.length,
+        expiringMrr: expiring.reduce((s, x) => s + monthlyOf(x.c), 0),
+        mrr,
+        arr: mrr * 12,
+        avgMonthly: active.length ? Math.round(mrr / active.length) : 0,
+      },
+      statusCount,
+      byPackage: [...pkgs.values()].sort((a, b) => b.mrr - a.mrr).slice(0, 6),
+      byMode: modes,
+      months: series,
+      expiring: expiring.slice(0, 6).map((x) => row(x.c, x.days)),
+      recent: [...contracts].filter((c: any) => c.status !== 'DELETED')
+        .sort((a: any, b: any) => +(created(b) || 0) - +(created(a) || 0)).slice(0, 6).map((c: any) => row(c)),
+      ids: contracts.filter((c: any) => c.status !== 'DELETED').map((c: any) => c.id),
     };
   }
 

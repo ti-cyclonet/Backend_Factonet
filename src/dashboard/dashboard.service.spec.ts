@@ -8,9 +8,15 @@ const f = (id: number, estado: string, fechaVencimiento: string, o: any = {}) =>
   total: 89000, iva: 16910, operationTypes: { iva: 'add' }, ...o,
 });
 
-function montar(facturas: any[]) {
+const k = (id: string, status: string, o: any = {}) => ({
+  id, code: `CT-${id}`, status, value: 1200000, mode: 'MONTHLY', startDate: '2026-05-01', endDate: null,
+  createdAt: '2026-05-01T15:00:00Z', updatedAt: '2026-05-01T15:00:00Z', package: { name: 'PRO' },
+  user: { basicData: { legalEntityData: { businessName: `Empresa ${id}` } } }, ...o,
+});
+
+function montar(facturas: any[], contratos: any[] = []) {
   const invoices: any = { findAll: jest.fn(async () => facturas) };
-  const contracts: any = { findAll: jest.fn(async () => []) };
+  const contracts: any = { findAll: jest.fn(async () => contratos) };
   return new DashboardService(invoices, contracts);
 }
 
@@ -54,5 +60,38 @@ describe('DashboardService', () => {
       .getOverview(undefined, 'adminFactonet');
     expect(o.kpis.collectedMonth).toBe(105910);
     expect(o.kpis.collectedPrevMonth).toBe(105910);
+  });
+
+  describe('contratos (administrador)', () => {
+    const contratos = [
+      k('a', 'ACTIVE', { endDate: '2026-10-20' }),
+      k('b', 'ACTIVE', { package: { name: 'FREE' }, value: 0 }),
+      k('c', 'PENDING', { startDate: '2026-10-05', createdAt: '2026-10-05T15:00:00Z' }),
+      k('d', 'CANCELLED', { updatedAt: '2026-09-10T15:00:00Z' }),
+      k('e', 'DELETED'),
+    ];
+
+    it('activos, ingreso recurrente, en firma y por vencer en 30 días', async () => {
+      const c = (await montar([], contratos).getOverview(undefined, 'adminFactonet')).contracts!;
+      expect(c.kpis).toMatchObject({ total: 4, active: 2, inProcess: 1, newThisMonth: 1, mrr: 100000, arr: 1200000, expiringCount: 1, expiringMrr: 100000 });
+      expect(c.expiring.map((x: any) => [x.code, x.dias, x.cliente])).toEqual([['CT-a', 12, 'Empresa a']]);
+    });
+
+    it('por paquete, por estado y altas/bajas por mes', async () => {
+      const c = (await montar([], contratos).getOverview(undefined, 'adminFactonet')).contracts!;
+      expect(c.byPackage.map((p: any) => [p.name, p.active, p.mrr])).toEqual([['PRO', 1, 100000], ['FREE', 1, 0]]);
+      expect(c.statusCount).toMatchObject({ ACTIVE: 2, PENDING: 1, CANCELLED: 1 });
+      const m = Object.fromEntries(c.months.map((x: any) => [x.key, [x.started, x.ended]]));
+      expect(m['2026-05']).toEqual([3, 0]);
+      expect(m['2026-09']).toEqual([0, 1]);
+      expect(m['2026-10']).toEqual([1, 0]);
+      expect(c.ids).not.toContain('e');
+    });
+
+    it('el cliente no recibe el bloque de contratos', async () => {
+      const o = await montar([f(1, 'Issued', '2026-10-20')], contratos).getOverview('t', 'adminInvoices');
+      expect(o.contracts).toBeNull();
+      expect(o.invoiceIds).toEqual([1]);
+    });
   });
 });
