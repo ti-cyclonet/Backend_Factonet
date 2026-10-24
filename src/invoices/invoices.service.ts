@@ -113,6 +113,8 @@ export class InvoicesService {
         // Periodo de servicio
         periodoInicio: invoice.periodStart,
         periodoFin: invoice.periodEnd,
+        // Qué se cobra cuando no es el plan (adicionales de otras apps)
+        concepto: invoice.concept || null,
       };
 
       // Agregar parámetros globales desde el campo JSON
