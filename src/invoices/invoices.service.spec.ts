@@ -94,6 +94,17 @@ describe('InvoicesService', () => {
       expect(form.getBuffer().toString()).toContain('105910');
     });
 
+    it('reenvía la referencia del soporte, y el 409 de referencia usada llega con su mensaje', async () => {
+      const { servicio, http } = montar();
+      await servicio.registerPayment(1, '2026-10-08', 105910, archivo, ' M-8721 4093 ');
+      expect(http.post.mock.calls[0][1].getBuffer().toString()).toContain('M-8721 4093');
+      const msg = 'Este soporte de pago ya se usó: la referencia M87214093 está registrada en el pago de la factura DF00005.';
+      const otro = montar(undefined, jest.fn(() => fallo(409, msg)));
+      await expect(otro.servicio.registerPayment(2, '2026-10-08', 105910, archivo, 'M87214093')).rejects.toMatchObject({
+        status: 409, response: expect.objectContaining({ message: msg }),
+      });
+    });
+
     it('confirmar un pago que Authoriza rechaza (409) devuelve ese 409 y su mensaje', async () => {
       const { servicio } = montar(undefined, jest.fn(() => fallo(409, 'La factura no tiene un pago reportado por verificar.')));
       await expect(servicio.confirmPayment(1)).rejects.toMatchObject({

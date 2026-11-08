@@ -199,7 +199,7 @@ export class InvoicesService {
    * Register a payment with mandatory voucher file.
    * Forwards the file to Authoriza which handles Cloudinary upload.
    */
-  async registerPayment(id: number, paymentDate: string, paidAmount: number, file?: Express.Multer.File) {
+  async registerPayment(id: number, paymentDate: string, paidAmount: number, file?: Express.Multer.File, paymentReference?: string) {
     try {
       // Voucher is mandatory
       if (!file) {
@@ -213,6 +213,7 @@ export class InvoicesService {
       const formData = new FormData();
       formData.append('paymentDate', paymentDate);
       formData.append('paidAmount', paidAmount.toString());
+      if (paymentReference?.trim()) formData.append('paymentReference', paymentReference.trim());
       formData.append('voucher', file.buffer, {
         filename: file.originalname,
         contentType: file.mimetype,
@@ -228,6 +229,23 @@ export class InvoicesService {
     } catch (error) {
       this.logger.error(`Error registering payment for invoice ${id}: ${error.message}`);
       throw errorDeAuthoriza(error, 'No se pudo registrar el pago.');
+    }
+  }
+
+  /**
+   * ¿La referencia del soporte ya se usó en el pago de otra factura?
+   * Si Authoriza no responde no se bloquea aquí: el registro igual la valida.
+   */
+  async checkPaymentReference(id: number, ref: string): Promise<{ used: boolean; message: string | null }> {
+    try {
+      const url = `${this.authorizerUrl}/api/invoices/${id}/payment-reference/check`;
+      const response = await firstValueFrom(
+        this.httpService.get(url, { params: { ref: ref ?? '' }, headers: authorizaInternalHeaders() })
+      );
+      return { used: !!response.data?.used, message: response.data?.message ?? null };
+    } catch (error) {
+      this.logger.warn(`No se pudo revisar la referencia de la factura ${id}: ${error.message}`);
+      return { used: false, message: null };
     }
   }
 
