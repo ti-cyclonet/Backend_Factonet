@@ -50,7 +50,14 @@ checkInvoicesInPeriod(@Query('startDate') startDate: string, @Query('endDate') e
     @UploadedFile() file?: Express.Multer.File
   ) {
     await this.invoicesService.assertInvoiceAccess(+id, req.user?.tenantId, req.user?.rol);
-    return this.invoicesService.registerPayment(+id, body.paymentDate, Number(body.paidAmount), file);
+    return this.invoicesService.registerPayment(+id, body.paymentDate, Number(body.paidAmount), file, body.paymentReference);
+  }
+
+  /** ¿La referencia ya se usó en el pago de otra factura? Aviso antes de enviar. */
+  @Get(':id/payment-reference/check')
+  async checkPaymentReference(@Request() req, @Param('id') id: string, @Query('ref') ref: string) {
+    await this.invoicesService.assertInvoiceAccess(+id, req.user?.tenantId, req.user?.rol);
+    return this.invoicesService.checkPaymentReference(+id, ref);
   }
 
   @Get(':id/voucher')
