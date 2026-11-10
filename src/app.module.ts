@@ -8,6 +8,7 @@ import { InvoicesModule } from './invoices/invoices.module';
 import { PagosModule } from './pagos/pagos.module';
 import { PeriodsModule } from './periods/periods.module';
 import { ReportsModule } from './reports/reports.module';
+import { AccountingModule } from './accounting/accounting.module';
 
 @Module({
   imports: [
@@ -20,6 +21,8 @@ import { ReportsModule } from './reports/reports.module';
     PagosModule,
     PeriodsModule,
     ReportsModule,
+    // Contabilidad: con base de datos propia (FACTONET_DB_*); sin ella responde "no configurada"
+    AccountingModule.register(),
   ],
 })
 export class AppModule {}
