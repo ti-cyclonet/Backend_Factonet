@@ -92,3 +92,29 @@ Frontend_Factonet (Angular) → Backend_Factonet (NestJS) → Backend_Authoriza 
 ## 📄 Licencia
 
 Privada - Derechos reservados Cyclonet
+
+## 📒 Contabilidad (etapa 1: la de CycloNet)
+
+Módulo `src/accounting`, con **base de datos propia de FactoNet**. Lleva el PUC base, los terceros, los comprobantes de partida doble (ingreso, egreso, nota contable y automáticos), los periodos con cierre y los reportes: balance de prueba, libro mayor/auxiliar, estado de resultados y estado de situación financiera. Las facturas y pagos de CycloNet en Authoriza se contabilizan solos (al pulsar «Sincronizar» y cada 30 minutos), sin duplicar. Solo lo ve el rol `adminFactonet`.
+
+Mientras no se configure la base de datos, FactoNet arranca igual que siempre y `GET /api/accounting/status` responde `{ enabled: false }`.
+
+**Para encenderla:**
+1. Crear la base en el RDS, una sola vez: `CREATE DATABASE "FactonetDB";`. Las tablas `acc_*` las crea `synchronize`.
+2. Agregar las variables al `.env` / compose del servidor. **No se sincronizan con el repo**, hay que ponerlas a mano:
+
+| Variable | Para qué |
+|---|---|
+| `FACTONET_DB_HOST`, `FACTONET_DB_PORT`, `FACTONET_DB_NAME`, `FACTONET_DB_USER`, `FACTONET_DB_PASSWORD` | Conexión (la misma instancia RDS, otra base). |
+| `FACTONET_DB_SSL` | `false` solo en local (por defecto SSL). |
+| `FACTONET_DB_SYNC` | `false` para no crear ni alterar tablas al arrancar (por defecto las crea). |
+| `ACCOUNTING_CYCLONET_TENANT_ID` | Usuario de Authoriza de CycloNet (dueño de la empresa contable). |
+| `ACCOUNTING_CYCLONET_NAME`, `ACCOUNTING_CYCLONET_NIT` | Datos de la empresa. |
+| `ACCOUNTING_AUTO_FROM` | `YYYY-MM-DD`: desde qué fecha se contabilizan las facturas automáticamente. Lo anterior se registra con saldos iniciales. |
+| `ACCOUNTING_AUTO_SYNC` | `false` apaga la sincronización cada 30 minutos (queda el botón). |
+
+**Pendiente con el contador de CycloNet:** validar el PUC base (`puc.ts`) y las cuentas de los asientos automáticos (`DEFAULT_ACCOUNT_MAP`):
+- factura emitida: 130505 contra 415595 y 240805;
+- pago: 111005 contra 130505, y la mora en 421005.
+
+**Prueba de integración contra Postgres:** `ACCOUNTING_TEST_DB=postgres://user:pass@host:port/db npx jest src/accounting/accounting.int-spec.ts --testRegex int-spec`

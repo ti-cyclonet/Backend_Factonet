@@ -44,14 +44,19 @@ describe('errorDeAuthoriza', () => {
 describe('RegisterPaymentDto', () => {
   const errores = async (body: any) => (await validate(plainToInstance(RegisterPaymentDto, body))).map(e => e.property);
 
+  // La referencia del soporte es obligatoria (un mismo comprobante no sirve para dos facturas)
+  const ref = { paymentReference: 'M87214093' };
+
   it('acepta el valor como texto, como llega en el multipart', async () => {
-    expect(await errores({ paymentDate: '2026-10-08', paidAmount: '150000' })).toEqual([]);
+    expect(await errores({ paymentDate: '2026-10-08', paidAmount: '150000', ...ref })).toEqual([]);
   });
 
-  it('rechaza un valor vacío, cero o no numérico y una fecha inválida', async () => {
-    expect(await errores({ paymentDate: '2026-10-08', paidAmount: '' })).toEqual(['paidAmount']);
-    expect(await errores({ paymentDate: '2026-10-08', paidAmount: '0' })).toEqual(['paidAmount']);
-    expect(await errores({ paymentDate: '2026-10-08', paidAmount: 'abc' })).toEqual(['paidAmount']);
-    expect(await errores({ paymentDate: 'ayer', paidAmount: '100' })).toEqual(['paymentDate']);
+  it('rechaza un valor vacío, cero o no numérico, una fecha inválida y la falta de referencia', async () => {
+    expect(await errores({ paymentDate: '2026-10-08', paidAmount: '', ...ref })).toEqual(['paidAmount']);
+    expect(await errores({ paymentDate: '2026-10-08', paidAmount: '0', ...ref })).toEqual(['paidAmount']);
+    expect(await errores({ paymentDate: '2026-10-08', paidAmount: 'abc', ...ref })).toEqual(['paidAmount']);
+    expect(await errores({ paymentDate: 'ayer', paidAmount: '100', ...ref })).toEqual(['paymentDate']);
+    expect(await errores({ paymentDate: '2026-10-08', paidAmount: '100' })).toEqual(['paymentReference']);
+    expect(await errores({ paymentDate: '2026-10-08', paidAmount: '100', paymentReference: '12' })).toEqual(['paymentReference']);
   });
 });
