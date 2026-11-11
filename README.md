@@ -161,3 +161,15 @@ FactoNet lee el XML, sin OCR, y la deja en **Contabilidad → Facturas recibidas
 5. **Permisos del contenedor de FactoNet:** `s3:ListBucket`, `s3:GetObject`, `s3:PutObject` y `s3:DeleteObject` sobre ese bucket, con el rol de la instancia EC2 o con `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY` en el `.env`.
 
 **Prueba de integración:** `ACCOUNTING_TEST_DB=… npx jest src/accounting/inbox/inbox.int-spec.ts --testRegex int-spec`
+
+### 🏢 Contabilidad para empresas (fase 3)
+Las empresas que contratan un plan de FactoNet en Authoriza (FACTONET INICIA, PRO o EMPRESA) tienen su propia contabilidad. La empresa entra con el rol `empresaFactonet` y su contador invitado con `contadorFactonet`.
+- **Empresa de la sesión:** el administrador de FactoNet ve la de CycloNet; los roles de empresa ven la de su `tenantId`.
+- **Configuración inicial:** la primera vez, la empresa indica razón social, NIT y si es responsable de IVA (`POST accounting/company/setup`). Se carga el PUC base y se le asigna su buzón `<alias>@facturas.cyclonet.com.co`.
+- **Límites del plan** (`GET /api/contracts/tenant/:id/limits?application=FactoNet` en Authoriza):
+  - sin plan activo no hay acceso;
+  - los comprobantes del mes tienen tope (`nComprobantes`);
+  - las facturas recibidas por encima de `nFacturasRecibidas` se reciben igual, marcadas con costo adicional.
+- **Exclusivo de CycloNet:** la sincronización con las facturas de Authoriza (`POST accounting/sync`).
+
+**Prueba de integración:** `ACCOUNTING_TEST_DB=… npx jest src/accounting/empresas.int-spec.ts --testRegex int-spec`
