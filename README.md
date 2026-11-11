@@ -119,32 +119,45 @@ Mientras no se configure la base de datos, FactoNet arranca igual que siempre y 
 
 **Prueba de integración contra Postgres:** `ACCOUNTING_TEST_DB=postgres://user:pass@host:port/db npx jest src/accounting/accounting.int-spec.ts --testRegex int-spec`
 
-### 📥 Facturas recibidas de proveedores (fase 1)
-Los proveedores envían su factura electrónica (ZIP con el XML UBL 2.1 y el PDF) a `facturas@cyclonet.com.co`. FactoNet lee el XML, sin OCR, y la deja en **Contabilidad → Facturas recibidas**: por aprobar, con la cuenta de la regla del proveedor. Nada se contabiliza sin aprobación. Al aprobar se crea una nota contable (causación):
+### 📥 Facturas recibidas de proveedores
+Cada empresa tiene su buzón de facturas en el subdominio **`facturas.cyclonet.com.co`**. El de CycloNet es **`cyclonet@facturas.cyclonet.com.co`** y cada cliente tendrá el suyo, por ejemplo `jimmylon@…`. Los proveedores envían ahí la factura electrónica: un ZIP con el XML UBL 2.1 y el PDF.
+
+FactoNet lee el XML, sin OCR, y la deja en **Contabilidad → Facturas recibidas**: por aprobar, con la cuenta de la regla del proveedor. Nada se contabiliza sin aprobación. Al aprobar se crea una nota contable (causación):
 - **Débito al gasto:** base + otros tributos + IVA. El IVA va al gasto porque CycloNet presta servicios excluidos de IVA; cambia con `accountMap.ivaCompras = '240810'`.
-- **Crédito a retenciones:** 236525 (renta), 236705 (IVA) y 236805 (ICA), según lo que traiga el XML.
+- **Crédito a retenciones:** 236525, 236705 y 236805, según lo que traiga el XML.
 - **Crédito a proveedores:** 220505, por el neto.
 
-La bandeja descarta sola:
-- las facturas duplicadas (por CUFE);
-- las dirigidas a otro NIT;
-- las que llegan sin XML.
+**A qué empresa va cada correo:**
+1. Por la dirección que lo recibió: `<alias>@facturas.cyclonet.com.co` corresponde a `acc_companies.inboxAlias`.
+2. Si no se puede saber por la dirección, por ejemplo en un reenvío desde el correo propio del cliente, por el **NIT del comprador** del XML.
+3. Si tampoco hay empresa con ese NIT, el correo se ignora.
 
-Mientras el buzón no esté configurado, las facturas se pueden **cargar a mano** (ZIP, XML o PDF).
-
-El correo de `cyclonet.com.co` está en **Titan**. Los proveedores envían a **`facturas@cyclonet.com.co`**, un buzón de Titan, y FactoNet lo lee por **IMAP**. No hay que tocar DNS ni AWS:
-- Cada correo de la bandeja de entrada se procesa y se mueve a la carpeta **FactoNet**.
-- Los correos que no se pudieron leer pasan a **FactoNet-Errores**, para revisarlos a mano.
+**Qué más hace la bandeja:**
+- Se descartan solas las facturas duplicadas (por CUFE) y las dirigidas a otro NIT.
+- Las que llegan sin XML quedan marcadas aparte.
+- Los correos sin facturas se ignoran.
+- Si Gmail pide confirmar un reenvío automático, queda un **aviso** con el código y el enlace.
+- Siempre se pueden **cargar a mano** ZIP, XML o PDF.
 
 | Variable | Uso |
 |---|---|
-| `INBOX_ADDRESS` | Dirección que se muestra para dar a los proveedores: `facturas@cyclonet.com.co` |
-| `INBOX_IMAP_HOST` | Servidor IMAP: `imap.titan.email` |
-| `INBOX_IMAP_PORT` / `INBOX_IMAP_SECURE` | Por defecto `993` / `true` (SSL) |
-| `INBOX_IMAP_USER` / `INBOX_IMAP_PASSWORD` | Usuario (`facturas@cyclonet.com.co`) y contraseña del buzón. Solo en el `.env` del servidor |
-| `INBOX_IMAP_DONE` | Carpeta de procesados (por defecto `FactoNet`) |
-| `INBOX_POLL_MINUTES` | Cada cuánto se revisa el buzón (por defecto 5) |
+| `INBOX_DOMAIN` | Subdominio de los buzones: `facturas.cyclonet.com.co` |
+| `ACCOUNTING_CYCLONET_INBOX_ALIAS` | Alias de CycloNet (por defecto `cyclonet`) |
+| `INBOX_S3_BUCKET` | Bucket donde SES guarda los correos. Sin esta variable no se revisa |
+| `INBOX_S3_PREFIX` | Carpeta de entrada (por defecto `entrantes/`). Lo procesado pasa a `procesados/` y lo que falla a `errores/` |
+| `INBOX_S3_REGION` | Región del bucket (por defecto `us-east-1`) |
+| `INBOX_POLL_MINUTES` | Cada cuánto se revisa (por defecto 5) |
+| `INBOX_IMAP_HOST` / `_PORT` / `_SECURE` / `_USER` / `_PASSWORD` / `_DONE` | Opcional: también leer un buzón por IMAP, por ejemplo uno de Titan. Lo que llegue ahí sin alias se asigna a CycloNet. Los correos procesados pasan a la carpeta `FactoNet` (o `FactoNet-Errores`) |
 
-**Alternativa sin buzón de Titan: AWS SES + S3** (`INBOX_S3_BUCKET`, `INBOX_S3_PREFIX` = `entrantes/`, `INBOX_S3_REGION`). SES recibe en un subdominio, por ejemplo `facturas.cyclonet.com.co`, con su registro `MX 10 inbound-smtp.us-east-1.amazonaws.com`. Una regla de recepción entrega los correos al bucket. El contenedor necesita `s3:ListBucket`, `GetObject`, `PutObject` y `DeleteObject`. Si IMAP está configurado, tiene prioridad.
+**Configuración en AWS (una sola vez, región us-east-1).** El DNS de `cyclonet.com.co` está en Route 53. El correo de la raíz sigue en Titan y no se toca.
+1. **SES → Identidades verificadas → Crear identidad:** dominio `facturas.cyclonet.com.co`. Acepta que SES cree los registros de verificación en Route 53.
+2. **Route 53 → zona `cyclonet.com.co`:** registro `MX` con nombre `facturas` y valor `10 inbound-smtp.us-east-1.amazonaws.com`.
+3. **S3:** bucket privado, por ejemplo `cyclonet-facturas-entrantes`.
+4. **SES → Recepción de correo:**
+   - crea un conjunto de reglas y márcalo **activo**;
+   - agrega una regla con destinatario `facturas.cyclonet.com.co`, para que reciba cualquier alias;
+   - deja activado el escaneo de spam y virus;
+   - acción "Entregar a S3": ese bucket, con el prefijo `entrantes/`.
+5. **Permisos del contenedor de FactoNet:** `s3:ListBucket`, `s3:GetObject`, `s3:PutObject` y `s3:DeleteObject` sobre ese bucket, con el rol de la instancia EC2 o con `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY` en el `.env`.
 
 **Prueba de integración:** `ACCOUNTING_TEST_DB=… npx jest src/accounting/inbox/inbox.int-spec.ts --testRegex int-spec`

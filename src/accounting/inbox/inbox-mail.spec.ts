@@ -30,8 +30,9 @@ describe('Buzón de facturas por IMAP (facturas@cyclonet.com.co)', () => {
       if (raw.toString().endsWith('12')) throw new Error('correo dañado');
       return [{ id: 'd1' }];
     });
-    const svc = new InboxMailService({ ingestRawEmail } as any);
+    const svc = new InboxMailService({ ingestRawEmail, defaultCompany: async () => ({ id: 'c-cyclonet' }) } as any);
     expect(await svc.poll()).toEqual({ configured: true, emails: 1, documents: 1 });
+    expect(ingestRawEmail).toHaveBeenCalledWith(expect.any(Buffer), { id: 'c-cyclonet' });
     expect(created).toEqual(['FactoNet', 'FactoNet-Errores']);
     expect(moves).toEqual([['11', 'FactoNet'], ['12', 'FactoNet-Errores']]);
   });

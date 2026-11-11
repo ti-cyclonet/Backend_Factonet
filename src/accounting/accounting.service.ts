@@ -9,6 +9,8 @@ import { authorizaInternalHeaders } from '../common/authoriza-internal';
 const r2 = (n: number) => Math.round((Number(n) || 0) * 100) / 100;
 const today = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Bogota' }).format(new Date());
 const isDate = (s: unknown) => /^\d{4}-\d{2}-\d{2}$/.test(String(s || ''));
+/** Alias del buzón de facturas de CycloNet (cyclonet@<INBOX_DOMAIN>). */
+const cyclonetInboxAlias = () => (process.env.ACCOUNTING_CYCLONET_INBOX_ALIAS || 'cyclonet').trim().toLowerCase();
 
 /** Datos para insertar un comprobante (manual, automático o reversa). */
 interface NewVoucher {
@@ -75,10 +77,15 @@ export class AccountingService implements OnModuleInit, OnModuleDestroy {
         nit: process.env.ACCOUNTING_CYCLONET_NIT || null,
         accountMap: { ...DEFAULT_ACCOUNT_MAP },
         autoFrom: isDate(process.env.ACCOUNTING_AUTO_FROM) ? process.env.ACCOUNTING_AUTO_FROM! : null,
+        inboxAlias: cyclonetInboxAlias(),
       }));
       await this.seedPuc(c.id);
       this.pucSynced.add(c.id);
       this.logger.log(`Empresa contable creada: ${c.name} (PUC base cargado)`);
+    }
+    if (!c.inboxAlias) {
+      c.inboxAlias = cyclonetInboxAlias();
+      await this.companies.update({ id: c.id }, { inboxAlias: c.inboxAlias });
     }
     if (!this.pucSynced.has(c.id)) {
       await this.addMissingPucAccounts(c.id);
@@ -151,6 +158,12 @@ export class AccountingService implements OnModuleInit, OnModuleDestroy {
 
   async saveThirdParty(input: { idType?: string; idNumber: string; name: string; email?: string }) {
     const c = await this.company();
+    return this.saveThirdPartyFor(c.id, input);
+  }
+
+  /** Crea o actualiza un tercero de una empresa dada (p. ej. el proveedor de una factura recibida). */
+  async saveThirdPartyFor(companyId: string, input: { idType?: string; idNumber: string; name: string; email?: string }) {
+    const c = { id: companyId };
     const idNumber = String(input.idNumber || '').replace(/[^\dA-Za-z-]/g, '');
     if (idNumber.length < 3) throw new BadRequestException('Escribe el número de documento del tercero.');
     if (!String(input.name || '').trim()) throw new BadRequestException('Escribe el nombre del tercero.');

@@ -13,8 +13,8 @@ export class InboxController {
   constructor(private readonly inbox: InboxService, private readonly mail: InboxMailService) {}
 
   @Get('config')
-  config() {
-    return { address: this.inbox.address(), mailbox: this.mail.configured };
+  async config() {
+    return { address: await this.inbox.address(), mailbox: this.mail.configured };
   }
 
   @Get()

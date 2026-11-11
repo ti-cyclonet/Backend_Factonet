@@ -4,14 +4,16 @@ import { ImapFlow } from 'imapflow';
 import { InboxService } from './inbox.service';
 
 /**
- * Buzón de facturas de proveedores. Dos formas de recibir los correos:
+ * Buzón de facturas de proveedores. Dos formas de recibir los correos (se
+ * revisan las dos si están configuradas):
  *
  * 1. IMAP (INBOX_IMAP_HOST/USER/PASSWORD): FactoNet lee el buzón de correo
  *    (p. ej. facturas@cyclonet.com.co en Titan). Cada correo de la bandeja de
  *    entrada se procesa y se mueve a la carpeta INBOX_IMAP_DONE ("FactoNet").
  *    Si no se pudo leer, se mueve a "<carpeta>-Errores".
- * 2. S3 (INBOX_S3_BUCKET): AWS SES recibe los correos de un subdominio y los
- *    guarda en S3; se procesa el prefijo INBOX_S3_PREFIX y se mueve a
+ * 2. S3 (INBOX_S3_BUCKET): AWS SES recibe los correos del subdominio
+ *    INBOX_DOMAIN (cualquier <alias>@facturas.cyclonet.com.co) y los guarda en S3;
+ *    cada correo va a la empresa de su alias o, si no, a la del NIT del comprador; se procesa el prefijo INBOX_S3_PREFIX y se mueve a
  *    procesados/ (o errores/).
  *
  * Se revisa cada INBOX_POLL_MINUTES.
@@ -36,7 +38,8 @@ export class InboxMailService implements OnModuleInit, OnModuleDestroy {
     const minutes = Math.max(1, Number(process.env.INBOX_POLL_MINUTES) || 5);
     this.timer = setInterval(() => this.poll().catch((e) => this.logger.warn(`Buzón: ${e.message}`)), minutes * 60_000);
     setTimeout(() => this.poll().catch((e) => this.logger.warn(`Buzón: ${e.message}`)), 30_000);
-    this.logger.log(`Buzón de facturas: ${this.imapConfigured ? `IMAP ${process.env.INBOX_IMAP_USER}@${this.imapHost}` : `s3://${this.bucket}/${this.prefix}`} cada ${minutes} min`);
+    const sources = [this.imapConfigured ? `IMAP ${process.env.INBOX_IMAP_USER}@${this.imapHost}` : '', this.bucket ? `s3://${this.bucket}/${this.prefix}` : ''].filter(Boolean).join(' y ');
+    this.logger.log(`Buzón de facturas: ${sources} cada ${minutes} min`);
   }
 
   onModuleDestroy(): void {
@@ -54,7 +57,17 @@ export class InboxMailService implements OnModuleInit, OnModuleDestroy {
     if (this.running) return { configured: true, emails: 0, documents: 0 };
     this.running = true;
     try {
-      const r = this.imapConfigured ? await this.pollImap() : await this.pollS3();
+      const r = { emails: 0, documents: 0 };
+      for (const [on, fn] of [[this.imapConfigured, () => this.pollImap()], [!!this.bucket, () => this.pollS3()]] as const) {
+        if (!on) continue;
+        try {
+          const x = await fn();
+          r.emails += x.emails;
+          r.documents += x.documents;
+        } catch (e: any) {
+          this.logger.warn(`Buzón: ${e.message}`);
+        }
+      }
       if (r.emails) this.logger.log(`Buzón: ${r.emails} correo(s), ${r.documents} documento(s)`);
       return { configured: true, ...r };
     } finally {
@@ -75,6 +88,8 @@ export class InboxMailService implements OnModuleInit, OnModuleDestroy {
     });
     let emails = 0;
     let documents = 0;
+    // El buzón IMAP es de CycloNet: lo que no traiga otro alias es suyo.
+    const fallback = await this.inbox.defaultCompany();
     await client.connect();
     try {
       for (const box of [done, failed]) {
@@ -88,7 +103,7 @@ export class InboxMailService implements OnModuleInit, OnModuleDestroy {
           try {
             const msg = await client.fetchOne(String(uid), { source: true }, { uid: true });
             if (!msg || !msg.source) continue;
-            const results = await this.inbox.ingestRawEmail(msg.source);
+            const results = await this.inbox.ingestRawEmail(msg.source, fallback);
             documents += results.length;
             emails += 1;
           } catch (e: any) {

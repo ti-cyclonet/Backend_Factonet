@@ -29,6 +29,10 @@ export class AccCompany {
   @Column({ type: 'date', nullable: true })
   autoFrom: string | null;
 
+  /** Buzón de facturas de proveedores: <inboxAlias>@<INBOX_DOMAIN> (p. ej. cyclonet@facturas.cyclonet.com.co). */
+  @Column({ type: 'varchar', length: 64, nullable: true, unique: true })
+  inboxAlias: string | null;
+
   @CreateDateColumn({ type: 'timestamptz' })
   createdAt: Date;
 }
@@ -237,10 +241,11 @@ export class AccInboxDocument {
 
   /**
    * PENDIENTE (por aprobar) · CONTABILIZADA · DUPLICADA · RECHAZADA (no es para
-   * esta empresa) · SIN_XML (llegó solo el PDF) · ERROR (no se pudo leer) · DESCARTADA.
+   * esta empresa) · SIN_XML (llegó solo el PDF) · ERROR (no se pudo leer) · DESCARTADA ·
+   * AVISO (mensaje para la empresa, p. ej. Gmail pide confirmar el reenvío).
    */
   @Column({ type: 'varchar', length: 15 })
-  status: 'PENDIENTE' | 'CONTABILIZADA' | 'DUPLICADA' | 'RECHAZADA' | 'SIN_XML' | 'ERROR' | 'DESCARTADA';
+  status: 'PENDIENTE' | 'CONTABILIZADA' | 'DUPLICADA' | 'RECHAZADA' | 'SIN_XML' | 'ERROR' | 'DESCARTADA' | 'AVISO';
 
   @Column({ type: 'varchar', length: 12, nullable: true })
   kind: 'Invoice' | 'CreditNote' | null;

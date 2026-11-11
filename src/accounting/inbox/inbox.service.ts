@@ -2,7 +2,7 @@ import { BadRequestException, Injectable, Logger, NotFoundException } from '@nes
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository } from 'typeorm';
 import { simpleParser } from 'mailparser';
-import { AccInboxDocument, AccSupplierRule, AccThirdParty } from '../entities';
+import { AccCompany, AccInboxDocument, AccSupplierRule, AccThirdParty } from '../entities';
 import { AccountingService } from '../accounting.service';
 import { AccountMap } from '../puc';
 import { LineInput } from '../ledger';
@@ -79,32 +79,104 @@ export class InboxService {
     @InjectRepository(AccInboxDocument) private readonly docs: Repository<AccInboxDocument>,
     @InjectRepository(AccSupplierRule) private readonly rules: Repository<AccSupplierRule>,
     @InjectRepository(AccThirdParty) private readonly thirdParties: Repository<AccThirdParty>,
+    @InjectRepository(AccCompany) private readonly companies: Repository<AccCompany>,
     private readonly acc: AccountingService,
   ) {}
 
-  /** Dirección que se les da a los proveedores. */
-  address(): string | null {
+  /** Subdominio de los buzones (SES): cada empresa recibe en <alias>@<dominio>. */
+  domain(): string | null {
+    return (process.env.INBOX_DOMAIN || '').trim().toLowerCase() || null;
+  }
+
+  /** Dirección que la empresa les da a sus proveedores. */
+  addressOf(c: { inboxAlias: string | null }): string | null {
+    const domain = this.domain();
+    if (domain && c.inboxAlias) return `${c.inboxAlias}@${domain}`;
     return (process.env.INBOX_ADDRESS || '').trim() || null;
+  }
+
+  /** Empresa por defecto (CycloNet). */
+  defaultCompany(): Promise<AccCompany> {
+    return this.acc.company();
+  }
+
+  /** Dirección de CycloNet (la pantalla de hoy es la de CycloNet). */
+  async address(): Promise<string | null> {
+    return this.addressOf(await this.acc.company());
   }
 
   // ═══════════════════════ Entrada
 
-  /** Un correo completo (MIME), tal como lo guarda SES en S3. */
-  async ingestRawEmail(raw: Buffer): Promise<IngestResult[]> {
+  /**
+   * Un correo completo (MIME), tal como lo guarda SES en S3 o se lee por IMAP.
+   * La empresa se identifica por la dirección que lo recibió (<alias>@dominio);
+   * si no se puede (p. ej. un reenvío que conserva el destinatario original),
+   * por el NIT del comprador en cada factura.
+   */
+  async ingestRawEmail(raw: Buffer, fallback: AccCompany | null = null): Promise<IngestResult[]> {
+    await this.acc.company(); // asegura la empresa de CycloNet (y su alias) antes de buscar destinatarios
     const mail = await simpleParser(raw);
+    const from = mail.from?.text || null;
+    const subject = mail.subject || null;
+    const company = (await this.companyByRecipient(raw, mail)) || fallback;
+
+    // Gmail pide confirmar el reenvío automático: se muestra el código al cliente.
+    if (/forwarding-noreply@google\.com/i.test(from || '')) {
+      if (!company) return [];
+      const text = `${mail.text || ''}`;
+      const code = text.match(/(?:c[oó]digo de confirmaci[oó]n|confirmation code)\D{0,20}(\d{6,12})/i)?.[1];
+      const link = text.match(/https:\/\/(?:mail-settings\.google\.com|mail\.google\.com)\/\S+/i)?.[0];
+      const message = ['Gmail pide confirmar el reenvío automático hacia este buzón.', code ? `Código de confirmación: ${code}.` : '', link ? `O abre este enlace: ${link}` : ''].filter(Boolean).join(' ');
+      return [await this.saveDoc({ companyId: company.id, source: 'CORREO', fromAddress: from?.slice(0, 255) || null, subject: subject?.slice(0, 300) || null, status: 'AVISO', message })];
+    }
+
     const files: ExtractedFile[] = (mail.attachments || []).map((a) => ({ name: a.filename || 'adjunto', data: a.content }));
-    return this.ingestFiles(files, { source: 'CORREO', from: mail.from?.text || null, subject: mail.subject || null });
+    return this.ingestFiles(files, { source: 'CORREO', from, subject }, company);
   }
 
-  /** Adjuntos de un correo o archivos subidos a mano (ZIP, XML o PDF). */
-  async ingestFiles(files: ExtractedFile[], meta: IngestMeta): Promise<IngestResult[]> {
-    const c = await this.acc.company();
-    const base = { companyId: c.id, source: meta.source, fromAddress: meta.from?.slice(0, 255) || null, subject: meta.subject?.slice(0, 300) || null };
+  /** Empresa dueña del alias al que llegó el correo (Received "for", Delivered-To, To, Cc…). */
+  private async companyByRecipient(raw: Buffer, mail: Awaited<ReturnType<typeof simpleParser>>): Promise<AccCompany | null> {
+    const domain = this.domain();
+    if (!domain) return null;
+    const head = raw.subarray(0, 64 * 1024).toString('utf8').split(/\r?\n\r?\n/)[0];
+    const found = new Set<string>();
+    const re = new RegExp(`([a-z0-9._%+-]+)@${domain.replace(/\./g, '\\.')}`, 'gi');
+    for (const m of head.matchAll(re)) found.add(m[1].toLowerCase());
+    const listed = [mail.to, mail.cc].flatMap((x: any) => (Array.isArray(x) ? x : x ? [x] : [])).flatMap((x: any) => x.value || []);
+    for (const a of listed) {
+      const [local, host] = String(a.address || '').toLowerCase().split('@');
+      if (host === domain && local) found.add(local);
+    }
+    for (const alias of found) {
+      const c = await this.companies.findOne({ where: { inboxAlias: alias } });
+      if (c) return c;
+    }
+    return null;
+  }
+
+  /** Empresa cuyo NIT coincide con el del comprador de la factura. */
+  private async companyByNit(nit: string): Promise<AccCompany | null> {
+    const base = nitBase(nit);
+    if (!base) return null;
+    const all = await this.companies.find({ select: ['id', 'nit', 'name', 'inboxAlias', 'tenantId', 'accountMap', 'autoFrom', 'createdAt'] });
+    const matches = all.filter((c) => nitBase(c.nit) === base);
+    return matches.length === 1 ? matches[0] : null;
+  }
+
+  /**
+   * Adjuntos de un correo o archivos subidos a mano (ZIP, XML o PDF).
+   * `company`: la empresa destino si se conoce (carga a mano, alias del buzón).
+   * Los correos sin facturas se ignoran en silencio.
+   */
+  async ingestFiles(files: ExtractedFile[], meta: IngestMeta, company: AccCompany | null = null): Promise<IngestResult[]> {
+    if (meta.source === 'CARGA' && !company) company = await this.acc.company();
+    const base = { source: meta.source, fromAddress: meta.from?.slice(0, 255) || null, subject: meta.subject?.slice(0, 300) || null };
     let extracted: { xmls: ExtractedFile[]; pdfs: ExtractedFile[] };
     try {
       extracted = await extractDocuments(files);
     } catch (e: any) {
-      return [await this.saveDoc({ ...base, status: 'ERROR', message: `No se pudieron abrir los adjuntos: ${e.message}` })];
+      if (!company) return [];
+      return [await this.saveDoc({ ...base, companyId: company.id, status: 'ERROR', message: `No se pudieron abrir los adjuntos: ${e.message}` })];
     }
     const { xmls, pdfs } = extracted;
 
@@ -121,20 +193,32 @@ export class InboxService {
 
     const out: IngestResult[] = [];
     if (!parsed.length) {
+      // Sin factura legible: solo se registra si se sabe de qué empresa es.
+      if (!company) {
+        if (xmls.length || pdfs.length) this.logger.warn(`Buzón: correo de ${meta.from || '?'} sin empresa identificable; se ignora.`);
+        return out;
+      }
       if (pdfs.length) {
         for (const p of pdfs) {
-          out.push(await this.saveDoc({ ...base, status: 'SIN_XML', pdfName: p.name, pdf: p.data,
+          out.push(await this.saveDoc({ ...base, companyId: company.id, status: 'SIN_XML', pdfName: p.name, pdf: p.data,
             message: 'Llegó solo el PDF, sin la factura electrónica (XML). Pídele el XML al proveedor o regístrala a mano en Comprobantes.' }));
         }
-      } else if (errors.length || files.length) {
-        out.push(await this.saveDoc({ ...base, status: 'ERROR', message: errors.length ? errors.join(' · ') : 'El correo no trae facturas (ZIP, XML o PDF).' }));
+      } else if (meta.source === 'CARGA' && (errors.length || files.length)) {
+        out.push(await this.saveDoc({ ...base, companyId: company.id, status: 'ERROR', message: errors.length ? errors.join(' · ') : 'Los archivos no traen facturas (ZIP, XML o PDF).' }));
+      } else if (errors.length && xmls.some((f) => /<(Invoice|CreditNote|AttachedDocument)\b/.test(f.data.toString('utf8', 0, 4000)))) {
+        out.push(await this.saveDoc({ ...base, companyId: company.id, status: 'ERROR', message: errors.join(' · ') }));
       }
       return out;
     }
 
     for (const [i, { doc, xml }] of parsed.entries()) {
+      const target = company || (await this.companyByNit(doc.customer.nit));
+      if (!target) {
+        this.logger.warn(`Buzón: factura ${doc.number} para el NIT ${doc.customer.nit || '?'} sin empresa en FactoNet; se ignora.`);
+        continue;
+      }
       const pdf = this.pickPdf(pdfs, doc, parsed.length, i);
-      out.push(await this.register(c, doc, xml, pdf, base));
+      out.push(await this.register(target, doc, xml, pdf, { ...base, companyId: target.id }));
     }
     return out;
   }
@@ -149,7 +233,7 @@ export class InboxService {
 
   private async register(c: { id: string; nit: string | null }, doc: SupplierDocument, xml: string, pdf: ExtractedFile | null, base: Partial<AccInboxDocument>): Promise<IngestResult> {
     const fields: Partial<AccInboxDocument> = {
-      ...base, kind: doc.kind, cufe: doc.cufe, supplierNit: doc.supplier.nit || null, supplierName: doc.supplier.name || null,
+      ...base, companyId: c.id, kind: doc.kind, cufe: doc.cufe, supplierNit: doc.supplier.nit || null, supplierName: doc.supplier.name || null,
       number: doc.number, issueDate: doc.issueDate || null, dueDate: doc.dueDate, base: doc.base, iva: doc.iva, otherTaxes: doc.otherTaxes,
       payable: doc.payable, xml, pdf: pdf?.data || null, pdfName: pdf?.name || null,
       data: { lines: doc.lines, withholdings: doc.withholdings, customer: doc.customer, supplier: doc.supplier, currency: doc.currency, references: doc.references },
@@ -174,7 +258,7 @@ export class InboxService {
 
     // Proveedor como tercero y cuenta sugerida por su regla
     if (doc.supplier.nit) {
-      await this.acc.saveThirdParty({ idType: '31', idNumber: doc.supplier.nit, name: doc.supplier.name || doc.supplier.nit, email: doc.supplier.email || undefined });
+      await this.acc.saveThirdPartyFor(c.id, { idType: '31', idNumber: doc.supplier.nit, name: doc.supplier.name || doc.supplier.nit, email: doc.supplier.email || undefined });
     }
     const rule = doc.supplier.nit ? await this.rules.findOne({ where: { companyId: c.id, supplierNit: doc.supplier.nit } }) : null;
     const notes: string[] = [];
