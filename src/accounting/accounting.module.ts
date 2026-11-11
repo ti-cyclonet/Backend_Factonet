@@ -4,6 +4,9 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { AdminFactonetGuard } from '../auth/guards/admin-factonet.guard';
 import { ACCOUNTING_ENTITIES } from './entities';
 import { AccountingService, VoucherInput } from './accounting.service';
+import { InboxController } from './inbox/inbox.controller';
+import { InboxService } from './inbox/inbox.service';
+import { InboxMailService } from './inbox/inbox-mail.service';
 
 /** Contabilidad de CycloNet (etapa 1): solo el administrador de FactoNet. */
 @Controller('accounting')
@@ -84,8 +87,8 @@ export class AccountingModule {
         }),
         TypeOrmModule.forFeature(ACCOUNTING_ENTITIES),
       ],
-      controllers: [AccountingController],
-      providers: [AccountingService],
+      controllers: [InboxController, AccountingController],
+      providers: [AccountingService, InboxService, InboxMailService],
     };
   }
 }

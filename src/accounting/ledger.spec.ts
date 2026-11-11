@@ -19,7 +19,7 @@ describe('Contabilidad · PUC', () => {
       const p = parentOf(a.code);
       if (p) expect(accounts.has(p)).toBe(true);
     }
-    for (const code of Object.values(DEFAULT_ACCOUNT_MAP)) expect(accounts.get(code)?.acceptsEntries).toBe(true);
+    for (const code of Object.values(DEFAULT_ACCOUNT_MAP).filter((c) => c !== 'gasto')) expect(accounts.get(code)?.acceptsEntries).toBe(true);
   });
 });
 

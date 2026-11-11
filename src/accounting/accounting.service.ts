@@ -2,7 +2,7 @@ import { BadRequestException, Injectable, Logger, NotFoundException, OnModuleDes
 import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
 import { Between, DataSource, ILike, In, Repository } from 'typeorm';
 import { AccAccount, AccCompany, AccPeriod, AccThirdParty, AccVoucher, AccVoucherLine } from './entities';
-import { DEFAULT_ACCOUNT_MAP, PUC_BASE, levelOf, natureOf, parentOf } from './puc';
+import { AccountMap, DEFAULT_ACCOUNT_MAP, PUC_BASE, levelOf, natureOf, parentOf } from './puc';
 import { LineInput, Movement, balanceSheet, incomeStatement, resultOf, totals, trialBalance, validateVoucher, vouchersFromInvoice } from './ledger';
 import { authorizaInternalHeaders } from '../common/authoriza-internal';
 
@@ -77,9 +77,34 @@ export class AccountingService implements OnModuleInit, OnModuleDestroy {
         autoFrom: isDate(process.env.ACCOUNTING_AUTO_FROM) ? process.env.ACCOUNTING_AUTO_FROM! : null,
       }));
       await this.seedPuc(c.id);
+      this.pucSynced.add(c.id);
       this.logger.log(`Empresa contable creada: ${c.name} (PUC base cargado)`);
     }
+    if (!this.pucSynced.has(c.id)) {
+      await this.addMissingPucAccounts(c.id);
+      this.pucSynced.add(c.id);
+    }
     return c;
+  }
+
+  /** Empresas a las que ya se les revisó el PUC en este proceso. */
+  private readonly pucSynced = new Set<string>();
+
+  /** Cuentas del PUC base que se agregaron después de crear la empresa (p. ej. retenciones de IVA e ICA). */
+  private async addMissingPucAccounts(companyId: string) {
+    const have = new Set((await this.accounts.find({ where: { companyId }, select: ['code'] })).map((a) => a.code));
+    const missing = PUC_BASE.filter((a) => !have.has(a.code));
+    if (!missing.length) return;
+    await this.accounts.save(missing.map((a) => this.accounts.create({
+      companyId, code: a.code, name: a.name, nature: natureOf(a.code), level: levelOf(a.code),
+      parentCode: parentOf(a.code), acceptsEntries: a.acceptsEntries, requiresThirdParty: !!a.requiresThirdParty, active: true,
+    })));
+    this.logger.log(`PUC: ${missing.length} cuenta(s) nueva(s) agregada(s) (${missing.map((a) => a.code).join(', ')})`);
+  }
+
+  /** Mapa de cuentas de la empresa, con los valores por defecto para lo que no tenga. */
+  accountMapOf(c: AccCompany): Required<AccountMap> {
+    return { ...DEFAULT_ACCOUNT_MAP, ...(c.accountMap || {}) } as Required<AccountMap>;
   }
 
   private async seedPuc(companyId: string) {
@@ -145,6 +170,20 @@ export class AccountingService implements OnModuleInit, OnModuleDestroy {
     await this.assertValid(c.id, input.lines);
     if (input.post) await this.assertOpen(c.id, input.date);
     return this.insertVoucher(c.id, { type: input.type, date: input.date, description: input.description, lines: input.lines, status: input.post ? 'CONTABILIZADO' : 'BORRADOR' }, user);
+  }
+
+  /**
+   * Comprobante contabilizado con clave de origen (una factura recibida, por
+   * ejemplo): si ya existe uno con esa clave, no se crea otro.
+   */
+  async postSourced(input: VoucherInput & { sourceKey: string }, user: string): Promise<AccVoucher> {
+    const c = await this.company();
+    const existing = await this.vouchers.findOne({ where: { companyId: c.id, sourceKey: input.sourceKey } });
+    if (existing) throw new BadRequestException('Ese documento ya está contabilizado.');
+    if (!isDate(input.date)) throw new BadRequestException('Fecha no válida.');
+    await this.assertValid(c.id, input.lines);
+    await this.assertOpen(c.id, input.date);
+    return this.insertVoucher(c.id, { type: input.type, date: input.date, description: input.description, lines: input.lines, status: 'CONTABILIZADO', sourceKey: input.sourceKey }, user);
   }
 
   async updateDraft(id: string, input: VoucherInput) {
