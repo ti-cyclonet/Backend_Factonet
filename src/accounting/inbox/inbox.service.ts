@@ -7,6 +7,7 @@ import { AccountingService } from '../accounting.service';
 import { AccountMap } from '../puc';
 import { LineInput } from '../ledger';
 import { ExtractedFile, SupplierDocument, extractDocuments, nitBase, parseSupplierDocument } from './ubl';
+import { reportPlatformUsage } from '../../common/platform-usage';
 
 const r2 = (n: number) => Math.round((Number(n) || 0) * 100) / 100;
 const isDate = (s: unknown) => /^\d{4}-\d{2}-\d{2}$/.test(String(s || ''));
@@ -113,12 +114,14 @@ export class InboxService {
    * si no se puede (p. ej. un reenvío que conserva el destinatario original),
    * por el NIT del comprador en cada factura.
    */
-  async ingestRawEmail(raw: Buffer, fallback: AccCompany | null = null): Promise<IngestResult[]> {
+  async ingestRawEmail(raw: Buffer, fallback: AccCompany | null = null, viaSes = false): Promise<IngestResult[]> {
     await this.acc.company(); // asegura la empresa de CycloNet (y su alias) antes de buscar destinatarios
     const mail = await simpleParser(raw);
     const from = mail.from?.text || null;
     const subject = mail.subject || null;
     const company = (await this.companyByRecipient(raw, mail)) || fallback;
+    // Indicadores de costos de Authoriza: cada correo recibido por SES, con el cliente al que llegó
+    if (viaSes) reportPlatformUsage({ platform: 'SES', metric: 'emails', quantity: 1, tenantId: company?.tenantId || null });
 
     // Gmail pide confirmar el reenvío automático: se muestra el código al cliente.
     if (/forwarding-noreply@google\.com/i.test(from || '')) {
