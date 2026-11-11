@@ -14,8 +14,15 @@ export function authorizaInternalHeaders(extra: Record<string, string> = {}): Re
  * cliente (adminInvoices) solo la de su tenant y cualquier otro rol nada.
  * Antes todo lo que no fuera adminInvoices se trataba como administrador.
  */
+/**
+ * Roles que, frente a CycloNet, son clientes: ven y pagan sus propias facturas.
+ * La empresa que contrata FactoNet (empresaFactonet) también paga su plan.
+ */
+export const CLIENT_ROLES = ['adminInvoices', 'empresaFactonet'];
+export const isClientRole = (rol?: string | null) => CLIENT_ROLES.includes(String(rol || ''));
+
 export function billingScope(rol?: string, tenantId?: string): { all: true } | { tenantId: string } {
   if (rol === 'adminFactonet') return { all: true };
-  if (rol === 'adminInvoices' && tenantId) return { tenantId };
+  if (isClientRole(rol) && tenantId) return { tenantId };
   throw new ForbiddenException('No tienes acceso a la facturación de FactoNet.');
 }

@@ -3,7 +3,7 @@ import { HttpService } from '@nestjs/axios';
 import { ConfigService } from '@nestjs/config';
 import { firstValueFrom } from 'rxjs';
 import * as FormData from 'form-data';
-import { authorizaInternalHeaders, billingScope } from '../common/authoriza-internal';
+import { authorizaInternalHeaders, billingScope, isClientRole } from '../common/authoriza-internal';
 import { errorDeAuthoriza } from '../common/authoriza-error';
 
 @Injectable()
@@ -36,7 +36,7 @@ export class InvoicesService {
       let invoices = response.data || [];
 
       // For adminInvoices (clients): hide Unconfirmed invoices
-      if (rol === 'adminInvoices') {
+      if (isClientRole(rol)) {
         invoices = invoices.filter((inv: any) => inv.status !== 'Unconfirmed');
       }
       

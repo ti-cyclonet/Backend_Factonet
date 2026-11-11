@@ -6,7 +6,7 @@ import { HttpService } from '@nestjs/axios';
 import { ConfigService } from '@nestjs/config';
 import { firstValueFrom } from 'rxjs';
 import { InvoicesService } from '../invoices/invoices.service';
-import { authorizaInternalHeaders } from '../common/authoriza-internal';
+import { authorizaInternalHeaders, isClientRole } from '../common/authoriza-internal';
 import { errorDeAuthoriza } from '../common/authoriza-error';
 import { ConfigPasarela, leerConfigPasarela } from './pasarela.config';
 import { ESTADOS_PAGABLES, totalAPagar } from './total-factura';
@@ -65,7 +65,7 @@ export class PagosService {
    */
   async crearCheckout(facturaId: number, usuario: { tenantId?: string; rol?: string; email?: string }) {
     const cfg = this.exigirActiva();
-    if (usuario?.rol !== 'adminInvoices') throw new ForbiddenException('Solo el cliente puede pagar sus facturas en línea.');
+    if (!isClientRole(usuario?.rol)) throw new ForbiddenException('Solo el cliente puede pagar sus facturas en línea.');
 
     const propias = await this.invoices.findAll(usuario.tenantId, usuario.rol);
     const factura = propias.find((f: any) => Number(f.id) === Number(facturaId));

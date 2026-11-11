@@ -2,7 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { HttpService } from '@nestjs/axios';
 import { ConfigService } from '@nestjs/config';
 import { firstValueFrom } from 'rxjs';
-import { billingScope } from '../common/authoriza-internal';
+import { billingScope, isClientRole } from '../common/authoriza-internal';
 import { errorDeAuthoriza } from '../common/authoriza-error';
 
 @Injectable()
@@ -39,7 +39,7 @@ export class ContractsService {
       const contracts = Array.isArray(rawData) ? rawData : [rawData];
 
       // No filtrar para adminFactonet ni adminInvoices (son sus propios datos)
-      if (rol === 'adminFactonet' || rol === 'adminInvoices') {
+      if (rol === 'adminFactonet' || isClientRole(rol)) {
         // Filter out internal/dev contracts (isBillable=false AND showInLanding=false)
         // Keep: billable contracts (paid plans) + free commercial plans (showInLanding=true)
         return contracts.filter((contract: any) => {
