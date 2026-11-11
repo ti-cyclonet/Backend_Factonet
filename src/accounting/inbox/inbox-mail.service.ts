@@ -135,7 +135,7 @@ export class InboxMailService implements OnModuleInit, OnModuleDestroy {
       try {
         const got = await this.s3().send(new GetObjectCommand({ Bucket: this.bucket, Key: key }));
         const raw = Buffer.from(await got.Body!.transformToByteArray());
-        const results = await this.inbox.ingestRawEmail(raw);
+        const results = await this.inbox.ingestRawEmail(raw, null, true);
         documents += results.length;
         emails += 1;
         await this.move(key, 'procesados/');
