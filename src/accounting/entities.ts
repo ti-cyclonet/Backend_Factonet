@@ -29,6 +29,10 @@ export class AccCompany {
   @Column({ type: 'date', nullable: true })
   autoFrom: string | null;
 
+  /** Buzón de facturas de proveedores: <inboxAlias>@<INBOX_DOMAIN> (p. ej. cyclonet@facturas.cyclonet.com.co). */
+  @Column({ type: 'varchar', length: 64, nullable: true, unique: true })
+  inboxAlias: string | null;
+
   @CreateDateColumn({ type: 'timestamptz' })
   createdAt: Date;
 }
@@ -211,4 +215,126 @@ export class AccPeriod {
   closedAt: Date | null;
 }
 
-export const ACCOUNTING_ENTITIES = [AccCompany, AccAccount, AccThirdParty, AccVoucher, AccVoucherLine, AccPeriod];
+/**
+ * Facturas (y notas crédito) recibidas de proveedores: llegan por correo o se
+ * cargan a mano, se leen del XML y esperan aprobación antes de contabilizarse.
+ */
+@Entity('acc_inbox_documents')
+@Index(['companyId', 'cufe'], { unique: true, where: `"cufe" IS NOT NULL AND "status" <> 'DUPLICADA'` })
+@Index(['companyId', 'status'])
+export class AccInboxDocument {
+  @PrimaryGeneratedColumn('uuid')
+  id: string;
+
+  @Column({ type: 'uuid' })
+  companyId: string;
+
+  /** CORREO (buzón) o CARGA (subida a mano). */
+  @Column({ type: 'varchar', length: 10 })
+  source: 'CORREO' | 'CARGA';
+
+  @Column({ type: 'varchar', length: 255, nullable: true })
+  fromAddress: string | null;
+
+  @Column({ type: 'varchar', length: 300, nullable: true })
+  subject: string | null;
+
+  /**
+   * PENDIENTE (por aprobar) · CONTABILIZADA · DUPLICADA · RECHAZADA (no es para
+   * esta empresa) · SIN_XML (llegó solo el PDF) · ERROR (no se pudo leer) · DESCARTADA ·
+   * AVISO (mensaje para la empresa, p. ej. Gmail pide confirmar el reenvío).
+   */
+  @Column({ type: 'varchar', length: 15 })
+  status: 'PENDIENTE' | 'CONTABILIZADA' | 'DUPLICADA' | 'RECHAZADA' | 'SIN_XML' | 'ERROR' | 'DESCARTADA' | 'AVISO';
+
+  @Column({ type: 'varchar', length: 12, nullable: true })
+  kind: 'Invoice' | 'CreditNote' | null;
+
+  @Column({ type: 'varchar', length: 120, nullable: true })
+  cufe: string | null;
+
+  @Column({ type: 'varchar', length: 30, nullable: true })
+  supplierNit: string | null;
+
+  @Column({ type: 'varchar', length: 200, nullable: true })
+  supplierName: string | null;
+
+  @Column({ type: 'varchar', length: 60, nullable: true })
+  number: string | null;
+
+  @Column({ type: 'date', nullable: true })
+  issueDate: string | null;
+
+  @Column({ type: 'date', nullable: true })
+  dueDate: string | null;
+
+  @Column({ type: 'numeric', precision: 18, scale: 2, default: 0 })
+  base: number;
+
+  @Column({ type: 'numeric', precision: 18, scale: 2, default: 0 })
+  iva: number;
+
+  @Column({ type: 'numeric', precision: 18, scale: 2, default: 0 })
+  otherTaxes: number;
+
+  @Column({ type: 'numeric', precision: 18, scale: 2, default: 0 })
+  payable: number;
+
+  /** Líneas, retenciones, comprador, referencias (lo leído del XML). */
+  @Column({ type: 'jsonb', nullable: true })
+  data: Record<string, any> | null;
+
+  /** Aviso o error para quien revisa. */
+  @Column({ type: 'text', nullable: true })
+  message: string | null;
+
+  /** Cuenta de gasto sugerida (regla del proveedor) o elegida al aprobar. */
+  @Column({ type: 'varchar', length: 10, nullable: true })
+  accountCode: string | null;
+
+  @Column({ type: 'uuid', nullable: true })
+  voucherId: string | null;
+
+  @Column({ type: 'uuid', nullable: true })
+  duplicateOfId: string | null;
+
+  @Column({ type: 'varchar', length: 200, nullable: true })
+  pdfName: string | null;
+
+  @Column({ type: 'bytea', nullable: true, select: false })
+  pdf: Buffer | null;
+
+  @Column({ type: 'text', nullable: true, select: false })
+  xml: string | null;
+
+  @Column({ type: 'varchar', length: 120, nullable: true })
+  reviewedBy: string | null;
+
+  @Column({ type: 'timestamptz', nullable: true })
+  reviewedAt: Date | null;
+
+  @CreateDateColumn({ type: 'timestamptz' })
+  receivedAt: Date;
+}
+
+/** Cuenta de gasto que se usa siempre para un proveedor (se guarda al aprobar). */
+@Entity('acc_supplier_rules')
+@Index(['companyId', 'supplierNit'], { unique: true })
+export class AccSupplierRule {
+  @PrimaryGeneratedColumn('uuid')
+  id: string;
+
+  @Column({ type: 'uuid' })
+  companyId: string;
+
+  @Column({ type: 'varchar', length: 30 })
+  supplierNit: string;
+
+  @Column({ type: 'varchar', length: 10 })
+  accountCode: string;
+
+  @UpdateDateColumn({ type: 'timestamptz' })
+  updatedAt: Date;
+}
+
+export const ACCOUNTING_ENTITIES = [AccCompany, AccAccount, AccThirdParty, AccVoucher, AccVoucherLine, AccPeriod, AccInboxDocument, AccSupplierRule];

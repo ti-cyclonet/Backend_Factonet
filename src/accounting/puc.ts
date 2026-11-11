@@ -62,6 +62,8 @@ export const PUC_BASE: PucAccount[] = [
   A('2335', 'Costos y gastos por pagar'), A('233595', 'Otros costos y gastos por pagar', { requiresThirdParty: true }),
   A('2365', 'Retención en la fuente'),
   A('236525', 'Servicios', { requiresThirdParty: true }), A('236540', 'Compras', { requiresThirdParty: true }),
+  A('2367', 'Impuesto a las ventas retenido'), A('236705', 'IVA retenido', { requiresThirdParty: true }),
+  A('2368', 'Impuesto de industria y comercio retenido'), A('236805', 'ICA retenido', { requiresThirdParty: true }),
   A('24', 'Impuestos, gravámenes y tasas'),
   A('2408', 'Impuesto sobre las ventas por pagar'),
   A('240805', 'IVA generado', { requiresThirdParty: false }), A('240810', 'IVA descontable'),
@@ -110,6 +112,17 @@ export interface AccountMap {
   ivaGenerado: string;
   bancos: string;
   interesesMora: string;
+  /** Facturas de proveedores (bandeja de recibidas). */
+  proveedores?: string;
+  /**
+   * IVA de las compras: cuenta de IVA descontable (240810) o 'gasto' (mayor
+   * valor del gasto). CycloNet presta servicios excluidos de IVA (art. 476-21),
+   * así que por defecto el IVA que paga NO es descontable: va al gasto.
+   */
+  ivaCompras?: string;
+  retencionRenta?: string;
+  retencionIva?: string;
+  retencionIca?: string;
 }
 
 export const DEFAULT_ACCOUNT_MAP: AccountMap = {
@@ -118,4 +131,9 @@ export const DEFAULT_ACCOUNT_MAP: AccountMap = {
   ivaGenerado: '240805',
   bancos: '111005',
   interesesMora: '421005',
+  proveedores: '220505',
+  ivaCompras: 'gasto',
+  retencionRenta: '236525',
+  retencionIva: '236705',
+  retencionIca: '236805',
 };
