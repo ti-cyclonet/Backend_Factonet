@@ -3,7 +3,8 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository } from 'typeorm';
 import { simpleParser } from 'mailparser';
 import { AccCompany, AccInboxDocument, AccSupplierRule, AccThirdParty } from '../entities';
-import { AccountingService } from '../accounting.service';
+import { AccountingService, Scope } from '../accounting.service';
+import { PlanService } from '../plan.service';
 import { AccountMap } from '../puc';
 import { LineInput } from '../ledger';
 import { ExtractedFile, SupplierDocument, extractDocuments, nitBase, parseSupplierDocument } from './ubl';
@@ -82,6 +83,7 @@ export class InboxService {
     @InjectRepository(AccThirdParty) private readonly thirdParties: Repository<AccThirdParty>,
     @InjectRepository(AccCompany) private readonly companies: Repository<AccCompany>,
     private readonly acc: AccountingService,
+    private readonly plans: PlanService,
   ) {}
 
   /** Subdominio de los buzones (SES): cada empresa recibe en <alias>@<dominio>. */
@@ -101,9 +103,9 @@ export class InboxService {
     return this.acc.company();
   }
 
-  /** Dirección de CycloNet (la pantalla de hoy es la de CycloNet). */
-  async address(): Promise<string | null> {
-    return this.addressOf(await this.acc.company());
+  /** Dirección del buzón de la empresa de la sesión. */
+  async address(scope?: Scope): Promise<string | null> {
+    return this.addressOf(await this.acc.company(scope));
   }
 
   // ═══════════════════════ Entrada
@@ -171,8 +173,8 @@ export class InboxService {
    * `company`: la empresa destino si se conoce (carga a mano, alias del buzón).
    * Los correos sin facturas se ignoran en silencio.
    */
-  async ingestFiles(files: ExtractedFile[], meta: IngestMeta, company: AccCompany | null = null): Promise<IngestResult[]> {
-    if (meta.source === 'CARGA' && !company) company = await this.acc.company();
+  async ingestFiles(files: ExtractedFile[], meta: IngestMeta, company: AccCompany | null = null, scope?: Scope): Promise<IngestResult[]> {
+    if (meta.source === 'CARGA' && !company) company = await this.acc.company(scope);
     const base = { source: meta.source, fromAddress: meta.from?.slice(0, 255) || null, subject: meta.subject?.slice(0, 300) || null };
     let extracted: { xmls: ExtractedFile[]; pdfs: ExtractedFile[] };
     try {
@@ -234,7 +236,7 @@ export class InboxService {
     return byNumber || (pdfs.length === docs ? pdfs[index] : null);
   }
 
-  private async register(c: { id: string; nit: string | null }, doc: SupplierDocument, xml: string, pdf: ExtractedFile | null, base: Partial<AccInboxDocument>): Promise<IngestResult> {
+  private async register(c: { id: string; nit: string | null; tenantId?: string }, doc: SupplierDocument, xml: string, pdf: ExtractedFile | null, base: Partial<AccInboxDocument>): Promise<IngestResult> {
     const fields: Partial<AccInboxDocument> = {
       ...base, companyId: c.id, kind: doc.kind, cufe: doc.cufe, supplierNit: doc.supplier.nit || null, supplierName: doc.supplier.name || null,
       number: doc.number, issueDate: doc.issueDate || null, dueDate: doc.dueDate, base: doc.base, iva: doc.iva, otherTaxes: doc.otherTaxes,
@@ -267,7 +269,21 @@ export class InboxService {
     const notes: string[] = [];
     if (doc.kind === 'CreditNote') notes.push(`Nota crédito${doc.references.length ? ` de la factura ${doc.references.join(', ')}` : ''}: al aprobarla se registra el asiento contrario.`);
     if (!rule) notes.push('Proveedor sin regla: elige la cuenta de gasto.');
+    const over = await this.overQuota(c);
+    if (over) notes.push(over);
     return this.saveDoc({ ...fields, status: 'PENDIENTE', accountCode: rule?.accountCode || null, message: notes.join(' ') || null });
+  }
+
+  /** ¿La empresa ya recibió las facturas del mes que incluye su plan? (CycloNet no tiene límite). */
+  private async overQuota(c: { id: string; tenantId?: string }): Promise<string | null> {
+    if (!c.tenantId || c.tenantId === (process.env.ACCOUNTING_CYCLONET_TENANT_ID || '').trim()) return null;
+    const limits = await this.plans.limits(c.tenantId);
+    if (limits.received === null) return null;
+    const { received } = await this.plans.usage(c.id);
+    // `received` aún no incluye esta factura: si ya se llegó al cupo, esta es adicional
+    return received >= limits.received
+      ? `Superaste las ${limits.received} facturas recibidas del mes de tu plan: esta tiene un costo adicional de $300.`
+      : null;
   }
 
   private async saveDoc(fields: Partial<AccInboxDocument>): Promise<IngestResult> {
@@ -278,23 +294,23 @@ export class InboxService {
 
   // ═══════════════════════ Consulta
 
-  async list(status?: string) {
-    const c = await this.acc.company();
+  async list(status?: string, scope?: Scope) {
+    const c = await this.acc.company(scope);
     const where: any = { companyId: c.id };
     if (status) where.status = In(String(status).split(','));
     return this.docs.find({ where, order: { receivedAt: 'DESC' }, take: 300 });
   }
 
-  async get(id: string) {
-    const c = await this.acc.company();
+  async get(id: string, scope?: Scope) {
+    const c = await this.acc.company(scope);
     const d = await this.docs.findOne({ where: { id, companyId: c.id } });
     if (!d) throw new NotFoundException('Documento no encontrado.');
     const preview = d.status === 'PENDIENTE' && d.accountCode ? this.preview(d, c, d.accountCode) : null;
     return { ...d, preview };
   }
 
-  async pdf(id: string): Promise<{ name: string; data: Buffer }> {
-    const c = await this.acc.company();
+  async pdf(id: string, scope?: Scope): Promise<{ name: string; data: Buffer }> {
+    const c = await this.acc.company(scope);
     const d = await this.docs.findOne({ where: { id, companyId: c.id }, select: ['id', 'pdf', 'pdfName', 'number'] });
     if (!d?.pdf) throw new NotFoundException('Este documento no trae PDF.');
     return { name: d.pdfName || `${d.number || 'factura'}.pdf`, data: d.pdf };
@@ -311,8 +327,8 @@ export class InboxService {
 
   // ═══════════════════════ Revisión
 
-  async approve(id: string, input: { accountCode: string; saveRule?: boolean; date?: string }, user: string) {
-    const c = await this.acc.company();
+  async approve(id: string, input: { accountCode: string; saveRule?: boolean; date?: string }, user: string, scope?: Scope) {
+    const c = await this.acc.company(scope);
     const d = await this.docs.findOne({ where: { id, companyId: c.id } });
     if (!d) throw new NotFoundException('Documento no encontrado.');
     if (d.status !== 'PENDIENTE') throw new BadRequestException('Solo se aprueban documentos pendientes.');
@@ -326,7 +342,7 @@ export class InboxService {
     const voucher = await this.acc.postSourced({
       type: 'NC', date, lines, post: true, sourceKey: `INBOX:${d.cufe || d.id}`,
       description: `${d.kind === 'CreditNote' ? 'Nota crédito' : 'Factura'} proveedor ${d.number || ''} · ${d.supplierName || ''}`.trim(),
-    }, user);
+    }, user, scope);
 
     if (input.saveRule && d.supplierNit) {
       const rule = await this.rules.findOne({ where: { companyId: c.id, supplierNit: d.supplierNit } });
@@ -337,8 +353,8 @@ export class InboxService {
     return { document: d, voucher };
   }
 
-  async discard(id: string, reason: string | undefined, user: string) {
-    const c = await this.acc.company();
+  async discard(id: string, reason: string | undefined, user: string, scope?: Scope) {
+    const c = await this.acc.company(scope);
     const d = await this.docs.findOne({ where: { id, companyId: c.id } });
     if (!d) throw new NotFoundException('Documento no encontrado.');
     if (d.status === 'CONTABILIZADA') throw new BadRequestException('Ya está contabilizado: si hay un error, reversa su comprobante.');
@@ -347,8 +363,8 @@ export class InboxService {
   }
 
   /** Vuelve a dejar pendiente un documento descartado por error. */
-  async reopen(id: string) {
-    const c = await this.acc.company();
+  async reopen(id: string, scope?: Scope) {
+    const c = await this.acc.company(scope);
     const d = await this.docs.findOne({ where: { id, companyId: c.id } });
     if (!d) throw new NotFoundException('Documento no encontrado.');
     if (d.status !== 'DESCARTADA') throw new BadRequestException('Solo se reabren documentos descartados.');
@@ -357,8 +373,8 @@ export class InboxService {
     return this.docs.save(d);
   }
 
-  async rulesList() {
-    const c = await this.acc.company();
+  async rulesList(scope?: Scope) {
+    const c = await this.acc.company(scope);
     return this.rules.find({ where: { companyId: c.id }, order: { supplierNit: 'ASC' } });
   }
 }
